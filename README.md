@@ -1,4 +1,4 @@
-# Farber Fleet website
+# Farber Fleet website 
 
 The fleet dashboard as a normal website, for people without a Claude account. It's four files:
 `index.html`, `app.js`, `style.css` and `config.js`. There's no build step and no server code.

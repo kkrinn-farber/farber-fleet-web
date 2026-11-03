@@ -348,13 +348,13 @@
     const count = h('span', { class: 'note' });
     const draw = () => {
       const q = clean(search.value).toLowerCase();
-      const rows = fleet.filter((t) => !q || [t.truck_id, t.truck_name, t.city, t.state].some((v) => String(v || '').toLowerCase().includes(q)));
+      const rows = fleet.filter((t) => !q || [t.truck_id, t.truck_name, t.near_city, t.near_state].some((v) => String(v || '').toLowerCase().includes(q)));
       count.textContent = q ? `${rows.length} of ${fleet.length} trucks` : `${fleet.length} trucks`;
       list.replaceChildren(...(rows.length ? rows.map((t) => h('a', { class: 'row', href: '#truck-' + encodeURIComponent(t.truck_id) },
         h('span', { class: 'plate', text: t.truck_id }),
         h('span', { class: 'row-main' },
           h('span', { class: 'row-name' + (t.truck_name ? '' : ' unnamed'), text: t.truck_name || 'No name set' }),
-          h('span', { class: 'row-sub', text: 'Last reported ' + ago(t.minutes_since_seen) + ([t.city, t.state].filter(Boolean).length ? ' · ' + [t.city, t.state].filter(Boolean).join(', ') : '') }),
+          h('span', { class: 'row-sub', text: 'Last reported ' + ago(t.minutes_since_seen) + (t.near_city ? ' · near ' + [t.near_city, t.near_state].filter(Boolean).join(', ') : '') }),
           t.warnings ? h('span', { class: 'why', text: t.warnings }) : null),
         h('span', { class: 'row-side' }, statusPill(t.status), healthPill(t.health))))
         : [h('div', { class: 'empty', text: 'No trucks match that search.' })]));

@@ -466,30 +466,6 @@
     return [legend, svg];
   };
 
-  const routeMap = (rows, width) => {
-    const p = rows.filter((r) => present(r.lat) && present(r.lon));
-    if (p.length < 2) return null;
-    const W = Math.max(240, Math.round(width || 600)), H = Math.round(Math.min(340, Math.max(200, W * 0.45))), M = 16;
-    let a0 = Math.min(...p.map((r) => r.lat)), a1 = Math.max(...p.map((r) => r.lat));
-    let o0 = Math.min(...p.map((r) => r.lon)), o1 = Math.max(...p.map((r) => r.lon));
-    const k = Math.cos(((a0 + a1) / 2) * Math.PI / 180);
-    let w = Math.max((o1 - o0) * k, 0.01), hgt = Math.max(a1 - a0, 0.01);
-    const s = Math.min((W - 2 * M) / w, (H - 2 * M) / hgt);
-    const cx = (o0 + o1) / 2, cy = (a0 + a1) / 2;
-    const X = (lon) => W / 2 + (lon - cx) * k * s;
-    const Y = (lat) => H / 2 - (lat - cy) * s;
-    const ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', 'Route for the selected time window');
-    const add = (tag, attrs) => { const e = document.createElementNS(ns, tag); for (const [kk, v] of Object.entries(attrs)) e.setAttribute(kk, v); svg.append(e); return e; };
-    add('rect', { x: 0, y: 0, width: W, height: H, fill: 'var(--bg)', rx: 8 });
-    add('polyline', { points: p.map((r) => X(r.lon).toFixed(1) + ',' + Y(r.lat).toFixed(1)).join(' '), fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'vector-effect': 'non-scaling-stroke' });
-    add('circle', { cx: X(p[0].lon), cy: Y(p[0].lat), r: 5, fill: 'var(--muted)' });
-    add('circle', { cx: X(p[p.length - 1].lon), cy: Y(p[p.length - 1].lat), r: 7, fill: 'var(--s1)', stroke: 'var(--panel)', 'stroke-width': 2 });
-    return svg;
-  };
 
   // shared by the staff truck page and the customer page (cust = hide IP and firmware)
   const nowPanelsFor = (t, maint, cust) => {
@@ -559,7 +535,6 @@
     const { nowPanels, maintRows } = nowPanelsFor(t, maint, isSalesView());
 
     const histBox = h('div', { class: 'charts' }, h('p', { class: 'loading', text: 'Loading history…' }));
-    const routeBox = h('div', { class: 'card' });
     const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Time window' }, [[6, '6 hours'], [24, '24 hours'], [72, '3 days'], [168, '7 days']].map(([v, label]) =>
       h('button', { type: 'button', 'aria-pressed': String(v === historyHours), onclick: (e) => {
         historyHours = v;
@@ -593,11 +568,6 @@
           return c ? h('div', { class: 'card chart' }, h('h3', { text: title }), ...c) : null;
         }).filter(Boolean);
         histBox.replaceChildren(...(charts.length ? charts : [h('div', { class: 'empty', text: 'No reports in this time window.' })]));
-        const m = routeMap(rows, (routeBox.clientWidth || 600) - 34);
-        const last = [...rows].reverse().find((x) => present(x.lat));
-        routeBox.replaceChildren(h('h3', { text: 'Route' }),
-          m ? h('p', { class: 'note', text: 'Gray dot: start of the window. Colored dot: latest position.' }) : h('p', { class: 'note', text: 'Not enough movement in this window to draw a route.' }),
-          m, last ? h('p', null, h('a', { href: mapUrl(last.lat, last.lon), target: '_blank', rel: 'noopener', text: 'Open latest position in Google Maps ↗' })) : null);
       } catch (err) {
         histBox.replaceChildren(h('div', { class: 'empty', text: 'History couldn’t load. ' + friendly(err) }));
       }
@@ -646,7 +616,6 @@
         ...detailPanels),
       h('div', { class: 'section-head' }, h('h2', { text: 'History' }), seg),
       histBox,
-      routeBox,
       h('div', { class: 'section-head' }, h('h2', { text: 'Events' }), h('p', { class: 'note', text: 'Last 30 days' })),
       h('div', { class: 'card scroll' }, eventRows.length ? h('table', { class: 'stack' },
         h('thead', null, h('tr', null, ['When', 'Event', 'Peak', 'Map'].map((x) => h('th', { text: x })))),

@@ -378,8 +378,6 @@
   const panel = (title, ...rows) => h('div', { class: 'card panel' }, h('h3', { text: title }), ...rows);
   const tone = (field, v) => {
     if (!present(v)) return null;
-    if (field === 'fridge_f') return v < 36 || v > 46 ? 'bad' : 'ok';
-    if (field === 'freezer_f') return v > 5 ? 'bad' : 'ok';
     if (LOW[field]) return v < LOW[field] ? 'bad' : null;
     return null;
   };
@@ -460,9 +458,13 @@
 
     const needs = (k) => t['has_' + k];
     const nowPanels = [
-      (needs('fridge') || needs('freezer')) && panel('Medical',
-        needs('fridge') && kv('Fridge', num(t.fridge_f, 1), '°F', tone('fridge_f', t.fridge_f)),
-        needs('freezer') && kv('Freezer', num(t.freezer_f, 1), '°F', tone('freezer_f', t.freezer_f))),
+      needs('temps') && panel('Temperatures',
+        kv('Chassis battery compartment', num(t.temp_chassis_batt_f, 1), '°F'),
+        kv('Aux battery compartment', num(t.temp_aux_batt_f, 1), '°F'),
+        kv('Rack', num(t.temp_rack_f, 1), '°F'),
+        kv('Front room', num(t.temp_front_f, 1), '°F'),
+        kv('Mid room', num(t.temp_mid_f, 1), '°F'),
+        kv('Rear room', num(t.temp_rear_f, 1), '°F')),
       panel('Truck',
         kv('Engine', t.engine), kv('Speed', num(t.speed_mph), ' mph'), kv('RPM', num(t.rpm)), kv('Fuel', num(t.fuel_pct), '%'),
         needs('oil') && kv('Oil pressure', num(t.oil_psi), ' psi'), kv('Coolant', num(t.coolant_f), '°F'),
@@ -518,7 +520,8 @@
         if (tk !== renderToken) return;
         const defs = [
           ['Speed', [{ key: 'speed_mph', label: 'Speed' }], ' mph', 0],
-          ['Medical temperatures', [{ key: 'fridge_f', label: 'Fridge' }, { key: 'freezer_f', label: 'Freezer' }], '°F', 1],
+          ['Room temperatures', [{ key: 'temp_front_f', label: 'Front' }, { key: 'temp_mid_f', label: 'Mid' }, { key: 'temp_rear_f', label: 'Rear' }], '°F', 1],
+          ['Compartment temperatures', [{ key: 'temp_chassis_batt_f', label: 'Chassis battery' }, { key: 'temp_aux_batt_f', label: 'Aux battery' }, { key: 'temp_rack_f', label: 'Rack' }], '°F', 1],
           ['Batteries', [{ key: 'chassis_v', label: 'Chassis' }, { key: 'aux_v', label: 'Aux' }], ' V', 2],
           ['Fuel', [{ key: 'fuel_pct', label: 'Fuel' }], '%', 0],
           ['Water tanks', [{ key: 'fresh_pct', label: 'Fresh' }, { key: 'gray_pct', label: 'Gray' }, { key: 'black_pct', label: 'Black' }], '%', 0],

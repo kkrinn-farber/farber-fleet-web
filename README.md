@@ -9,8 +9,12 @@ The fleet dashboard as a normal website, for people without a Claude account. It
   The site then shows a one-time **invite code** (it works for 14 days).
 - The person opens the site, presses **First time here**, enters that email, chooses a password and
   types the code. From then on they sign in with email and password.
-- **Viewers** see everything. **Admins** can also edit trucks, add trucks (which makes the tracker
-  token) and manage users.
+- Every person has a **user type**: Sales, Service, Engineering or Customer (picked when inviting).
+- Staff (Sales, Service, Engineering) see the fleet. **Viewers** look; **Admins** can also edit trucks,
+  add trucks (which makes the tracker token) and manage users. Admins can preview the site as another
+  staff type with **View as** at the top.
+- **Customers** are tied to one or more trucks and only see the customer page for those trucks
+  (`#customer-19227`, a placeholder for the coming customer portal). They never see the fleet.
 - **Forgotten password:** an admin presses **Reset sign-in** for that person, which gives a new code.
   The person goes through **First time here** again.
 - The site files hold no data and no secrets. The Supabase *publishable* key in `config.js` is meant
@@ -55,7 +59,9 @@ repository: the token file lets anyone pretend to be a truck.
 | `#warnings` | Trucks with warnings: every warning per truck, status and last update |
 | `#edit`, `#edit-19227` | Edit trucks (admins) |
 | `#new` | Add a truck (admins) |
-| `#users` | Users and invite codes (admins) |
+| `#users` | Users, user types and invite codes (admins); tabs by type |
+| `#customer-19227` | The customer page for one truck (customer portal placeholder); staff open it with **View customer page** |
+| `#mytrucks` | A customer's own trucks |
 | `#account` | Change your password |
 
 The menu (top left) lists them, and new pages get a line there. The theme menu has the same

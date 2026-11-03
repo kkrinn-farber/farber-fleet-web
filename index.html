@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=202611032018">
+<link rel="stylesheet" href="style.css?v=202611032026">
 <script>try { var t = localStorage.getItem('ff-theme'); if (t && t !== 'auto') document.documentElement.classList.add('themed', 't-' + t); } catch (e) {}</script>
 </head>
 <body>
@@ -17,11 +17,12 @@
   <header class="top">
     <button type="button" class="icon-btn" id="menu-btn" aria-expanded="false" aria-controls="menu" aria-label="Menu" hidden><svg width="26" height="26" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
     <nav class="menu" id="menu" hidden aria-label="Farber Fleet pages">
-      <p class="menu-group">Fleet</p>
-      <a href="#trucks" data-page="trucks">All trucks</a>
-      <a href="#offline" data-page="offline">Trucks offline</a>
-      <a href="#shocks" data-page="shocks">Shocks this week</a>
-      <a href="#warnings" data-page="warnings">Trucks with warnings</a>
+      <p class="menu-group staff-only">Fleet</p>
+      <a href="#trucks" data-page="trucks" class="staff-only">All trucks</a>
+      <a href="#offline" data-page="offline" class="staff-only">Trucks offline</a>
+      <a href="#shocks" data-page="shocks" class="staff-only">Shocks this week</a>
+      <a href="#warnings" data-page="warnings" class="staff-only">Trucks with warnings</a>
+      <a href="#mytrucks" data-page="mytrucks" class="customer-only" hidden>My trucks</a>
       <p class="menu-group admin-only">Manage</p>
       <a href="#edit" data-page="edit" class="admin-only">Edit trucks</a>
       <a href="#new" data-page="new" class="admin-only">Add a truck</a>
@@ -33,6 +34,12 @@
     <span class="logo" role="img" aria-label="Farber Fleet"></span>
     <div class="top-right">
       <span class="who" id="who"></span>
+      <select id="view-as" class="pill-btn" aria-label="View the site as" hidden>
+        <option value="">View as: Admin</option>
+        <option value="sales">View as: Sales</option>
+        <option value="service">View as: Service</option>
+        <option value="engineering">View as: Engineering</option>
+      </select>
       <button type="button" class="pill-btn" id="theme-btn" aria-expanded="false" aria-controls="themes">Theme: <span id="theme-name">Auto</span> ▾</button>
       <div class="themes" id="themes" hidden>
         <div class="theme-grid">
@@ -67,11 +74,12 @@
       </div>
     </div>
   </header>
+  <div id="viewas-bar" class="viewas" hidden role="status">Viewing as <b id="viewas-name"></b>. Admin tools are hidden. <button type="button" id="viewas-exit" class="btn ghost small">Back to admin view</button></div>
   <div id="notice" class="notice bad" hidden role="alert"><strong id="notice-title"></strong><span id="notice-body"></span></div>
   <main id="app" aria-live="polite"><p class="loading">Loading…</p></main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=202611032018"></script>
-<script src="app.js?v=202611032018"></script>
+<script src="config.js?v=202611032026"></script>
+<script src="app.js?v=202611032026"></script>
 </body>
 </html>

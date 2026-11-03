@@ -25,6 +25,7 @@
 
   const $ = (id) => document.getElementById(id);
   const app = $('app');
+  { const rc = app.replaceChildren.bind(app); app.replaceChildren = (...kids) => rc(...kids.filter((k) => k !== null && k !== undefined && k !== false)); }
   const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
   });
@@ -60,7 +61,14 @@
   const mapUrl = (lat, lon) => `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
   const statusPill = (s) => h('span', { class: 'pill ' + (s === 'Online' ? 'ok' : s === 'Offline' ? 'bad' : 'muted'), text: s });
   const healthPill = (s) => h('span', { class: 'pill ' + (s === 'Good' ? 'ok' : 'warn'), text: s });
-  const isAdmin = () => me && me.role === 'admin';
+  const TYPES = { sales: 'Sales', service: 'Service', engineering: 'Engineering', customer: 'Customer' };
+  // Admins can preview the site as another (staff) user type; customers have their own pages.
+  let viewAs = null;
+  try { viewAs = sessionStorage.getItem('ff-view-as'); } catch (e) { viewAs = null; }
+  const realAdmin = () => me && me.role === 'admin';
+  const isAdmin = () => realAdmin() && !viewAs;
+  const isCustomer = () => me && me.user_type === 'customer';
+  const typeLabel = (t) => TYPES[t] || 'Not set';
 
   const showNotice = (title, body, kind) => {
     $('notice').hidden = false;
@@ -117,10 +125,25 @@
 
   const setChrome = () => {
     const signedIn = me && me.status === 'member';
+    if (viewAs && !(realAdmin() && TYPES[viewAs] && viewAs !== 'customer')) viewAs = null;
     $('menu-btn').hidden = !signedIn;
-    $('who').textContent = signedIn ? (me.name || me.email) + (isAdmin() ? ' · admin' : '') : '';
+    $('who').textContent = !signedIn ? '' : viewAs ? `${me.name || me.email} · viewing as ${TYPES[viewAs]}`
+      : (me.name || me.email) + (me.user_type ? ' · ' + typeLabel(me.user_type) : '') + (isAdmin() ? ' · admin' : '');
     document.querySelectorAll('.admin-only').forEach((el) => { el.hidden = !isAdmin(); });
+    document.querySelectorAll('.staff-only').forEach((el) => { el.hidden = !signedIn || isCustomer(); });
+    document.querySelectorAll('.customer-only').forEach((el) => { el.hidden = !signedIn || !isCustomer(); });
+    $('view-as').hidden = !(signedIn && realAdmin());
+    $('view-as').value = viewAs || '';
+    $('viewas-bar').hidden = !viewAs;
+    $('viewas-name').textContent = viewAs ? TYPES[viewAs] : '';
   };
+  const setViewAs = (v) => {
+    viewAs = v && TYPES[v] && v !== 'customer' ? v : null;
+    try { if (viewAs) sessionStorage.setItem('ff-view-as', viewAs); else sessionStorage.removeItem('ff-view-as'); } catch (e) { /* this tab only */ }
+    route();
+  };
+  $('view-as').addEventListener('change', (e) => setViewAs(e.target.value));
+  $('viewas-exit').addEventListener('click', () => setViewAs(null));
   const markMenu = (page) => {
     document.querySelectorAll('#menu a[data-page]').forEach((a) => {
       if (a.dataset.page === page) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -133,7 +156,8 @@
     let m;
     if ((m = /^truck-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'truck', id: m[1] };
     if ((m = /^edit-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'edit', id: m[1] };
-    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account'].includes(raw)) return { page: raw, id: null };
+    if ((m = /^customer-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'customer', id: m[1] };
+    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks'].includes(raw)) return { page: raw, id: null };
     return { page: 'trucks', id: null };
   };
   const go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
@@ -155,7 +179,9 @@
     }
     setChrome();
     currentHash = location.hash;
-    const r = parse();
+    let r = parse();
+    // Customers only get their own trucks' customer pages and their account.
+    if (isCustomer() && !['customer', 'account', 'mytrucks'].includes(r.page)) r = { page: 'mytrucks', id: null };
     markMenu(r.page === 'truck' ? 'trucks' : r.page);
     window.scrollTo(0, 0);
     const adminPages = ['edit', 'new', 'users'];
@@ -164,7 +190,8 @@
       return;
     }
     const pages = { trucks: renderFleet, truck: renderTruck, offline: renderOffline, shocks: renderShocks, warnings: renderWarnings,
-      edit: r.id ? renderEditor : renderEditList, new: renderEditor, users: renderUsers, account: renderAccount };
+      edit: r.id ? renderEditor : renderEditList, new: renderEditor, users: renderUsers, account: renderAccount,
+      customer: renderCustomer, mytrucks: renderMyTrucks };
     app.replaceChildren(h('p', { class: 'loading', text: 'Loading…' }));
     try {
       await pages[r.page](r, token);
@@ -560,7 +587,8 @@
       h('h1', { class: 'title' }, t.truck_id, t.truck_name ? h('span', { class: 'sub', text: ' · ' + t.truck_name }) : null),
       h('div', { class: 'meta' }, statusPill(t.status), healthPill(t.health), t.warnings ? h('span', { class: 'why', text: t.warnings }) : null,
         h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }),
-        isAdmin() ? h('a', { href: '#edit-' + encodeURIComponent(t.truck_id), text: 'Edit truck' }) : null),
+        isAdmin() ? h('a', { href: '#edit-' + encodeURIComponent(t.truck_id), text: 'Edit truck' }) : null,
+        h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' })),
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report. Equipment this truck doesn’t have is left out.' })),
       h('div', { class: 'panels' }, nowPanels),
       h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Overdue items turn the truck to Warning. Generator oil goes by the hour meter.' })),
@@ -837,10 +865,71 @@
         copyStatus));
   };
 
-  // ---------- users (admin)
-  const renderUsers = async (r, token) => {
-    const users = await rpc('web_users');
+  // ---------- customer portal (placeholder; the real portal comes later)
+  const renderCustomer = async (r, token) => {
+    let t;
+    try { t = await rpc('web_customer_truck', { p_truck: r.id }); }
+    catch (err) {
+      if (!/Not allowed/i.test(err.message || '')) throw err;
+      app.replaceChildren(h('div', { class: 'empty', text: 'This truck isn’t linked to your account.' },
+        isCustomer() ? h('div', { style: 'margin-top:12px' }, h('a', { class: 'btn ghost', href: '#mytrucks', text: 'My trucks' })) : null));
+      return;
+    }
     if (token !== renderToken) return;
+    if (!t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
+    const back = isCustomer()
+      ? ((me.customer_trucks || []).length > 1 ? h('a', { class: 'back', href: '#mytrucks', text: '← My trucks' }) : null)
+      : h('a', { class: 'back', href: '#truck-' + encodeURIComponent(t.truck_id), text: '← Back to the truck page' });
+    app.replaceChildren(...[
+      back,
+      isCustomer() ? null : h('div', { class: 'notice' }, h('strong', { text: 'Customer view' }), h('span', { text: ' This is the page the truck’s customer will see.' })),
+      h('p', { class: 'eyebrow', text: 'Customer portal' }),
+      h('h1', { class: 'title' }, t.truck_id, t.truck_name ? h('span', { class: 'sub', text: ' · ' + t.truck_name }) : null),
+      h('div', { class: 'meta' }, statusPill(t.status), h('span', { text: 'Last report ' + ago(t.minutes_since_seen) })),
+      h('div', { class: 'card' },
+        h('h2', { text: 'Coming soon' }),
+        h('p', { class: 'muted', style: 'margin-top:6px', text: 'The customer portal for this truck is being built. It will live on this page.' })),
+    ].filter(Boolean));
+  };
+  const renderMyTrucks = async (r, token) => {
+    const rows = await rpc('web_my_trucks');
+    if (token !== renderToken) return;
+    if (rows.length === 1) { location.replace('#customer-' + encodeURIComponent(rows[0].truck_id)); return; }
+    app.replaceChildren(
+      h('h1', { class: 'title', text: 'My trucks' }),
+      rows.length ? h('div', { class: 'list' }, rows.map((t) => h('a', { class: 'row', href: '#customer-' + encodeURIComponent(t.truck_id) },
+        h('span', { class: 'plate', text: t.truck_id }),
+        h('span', { class: 'row-main' }, h('span', { class: 'row-name', text: t.truck_name || 'Truck ' + t.truck_id })),
+        h('span', { class: 'row-side' }, h('span', { class: 'note', text: 'Open →' })))))
+        : h('div', { class: 'empty', text: 'No trucks are linked to your account yet. Ask Farber to add them.' }));
+  };
+
+  // ---------- users (admin)
+  // A searchable checklist of trucks (for customer accounts)
+  const truckPicker = (allTrucks, selected) => {
+    const chosen = new Set(selected || []);
+    const search = h('input', { class: 'search', type: 'search', placeholder: 'Find a truck', 'aria-label': 'Find a truck' });
+    const box = h('div', { class: 'pick-list' });
+    const count = h('span', { class: 'note' });
+    const draw = () => {
+      const q = clean(search.value).toLowerCase();
+      box.replaceChildren(...allTrucks.filter((t) => !q || (t.truck_id + ' ' + (t.truck_name || '')).toLowerCase().includes(q)).map((t) => {
+        const cb = h('input', { type: 'checkbox', value: t.truck_id });
+        cb.checked = chosen.has(t.truck_id);
+        cb.addEventListener('change', () => { if (cb.checked) chosen.add(t.truck_id); else chosen.delete(t.truck_id); count.textContent = `${chosen.size} selected`; });
+        return h('label', { class: 'pick' }, cb, h('span', { text: t.truck_id + (t.truck_name ? ' · ' + t.truck_name : '') }));
+      }));
+      count.textContent = `${chosen.size} selected`;
+    };
+    search.addEventListener('input', draw);
+    draw();
+    return { el: h('div', { class: 'picker' }, h('div', { class: 'toolbar' }, search, count), box), value: () => [...chosen] };
+  };
+
+  const renderUsers = async (r, token) => {
+    const [users, fleet] = await Promise.all([rpc('web_users'), rpc('web_fleet')]);
+    if (token !== renderToken) return;
+    const allTrucks = fleet.map((t) => ({ truck_id: t.truck_id, truck_name: t.truck_name }));
     const codeBox = h('div', { class: 'notice good', hidden: true });
     const showCode = (res, what) => {
       const site = location.origin + location.pathname;
@@ -863,23 +952,39 @@
     // add form
     const em = field('Email', { type: 'email', autocomplete: 'off' });
     const nm = field('Name (optional)', { autocomplete: 'off', maxlength: '80' });
+    const typeSel = h('select', { id: 'new-type' }, h('option', { value: '', text: 'Choose…' }),
+      Object.entries(TYPES).map(([v, l]) => h('option', { value: v, text: l })));
     const roleSel = h('select', { id: 'new-role' }, h('option', { value: 'viewer', text: 'Viewer (can look)' }), h('option', { value: 'admin', text: 'Admin (can also edit and manage users)' }));
+    const roleField = h('div', { class: 'field' }, h('label', { for: 'new-role', text: 'Access' }), roleSel);
+    let picker = truckPicker(allTrucks, []);
+    const trucksField = h('div', { class: 'field wide', hidden: true }, h('span', { class: 'field-label', text: 'Trucks this customer can see' }), picker.el);
+    typeSel.addEventListener('change', () => {
+      const cust = typeSel.value === 'customer';
+      roleField.hidden = cust;
+      trucksField.hidden = !cust;
+    });
     const addStatus = h('span', { class: 'status' });
     const addBtn = h('button', { class: 'btn', type: 'submit', text: 'Add person' });
     const addForm = h('form', { class: 'card form', novalidate: true },
       h('h2', { text: 'Add a person' }),
-      h('div', { class: 'grid' }, em.wrap, nm.wrap, h('div', { class: 'field' }, h('label', { for: 'new-role', text: 'Access' }), roleSel)),
+      h('div', { class: 'grid' }, em.wrap, nm.wrap, h('div', { class: 'field' }, h('label', { for: 'new-type', text: 'User type' }), typeSel), roleField, trucksField),
       h('div', { class: 'actions' }, addBtn, addStatus));
     addForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = clean(em.input.value).toLowerCase();
       if (!EMAIL_OK.test(email)) { addStatus.className = 'status bad'; addStatus.textContent = 'Enter an email address.'; return; }
+      if (!typeSel.value) { addStatus.className = 'status bad'; addStatus.textContent = 'Choose a user type.'; return; }
+      const cust = typeSel.value === 'customer';
+      if (cust && !picker.value().length) { addStatus.className = 'status bad'; addStatus.textContent = 'Pick at least one truck for this customer.'; return; }
       addBtn.disabled = true; addStatus.className = 'status busy'; addStatus.textContent = 'Adding…';
       try {
-        const res = await rpc('web_user_add', { p_email: email, p_name: clean(nm.input.value), p_role: roleSel.value });
+        const res = await rpc('web_user_add', { p_email: email, p_name: clean(nm.input.value), p_role: cust ? 'viewer' : roleSel.value,
+          p_type: typeSel.value, p_trucks: cust ? picker.value() : [] });
         await refreshList();
         showCode(res, 'Added');
-        em.input.value = ''; nm.input.value = '';
+        em.input.value = ''; nm.input.value = ''; typeSel.value = ''; roleSel.value = 'viewer';
+        picker = truckPicker(allTrucks, []); trucksField.replaceChildren(trucksField.firstChild, picker.el);
+        roleField.hidden = false; trucksField.hidden = true;
         addStatus.textContent = '';
       } catch (err) { addStatus.className = 'status bad'; addStatus.textContent = friendly(err); }
       addBtn.disabled = false;
@@ -887,8 +992,58 @@
 
     const tbody = h('tbody');
     const listStatus = h('p', { class: 'status', 'aria-live': 'polite' });
+    let allUsers = users;
+    let tab = 'all';
+    const tabs = h('div', { class: 'seg tabs-row', role: 'tablist', 'aria-label': 'Filter by user type' });
+    const drawTabs = () => {
+      const n = (k) => allUsers.filter((u) => (k === 'all') || (k === 'none' ? !u.user_type : u.user_type === k)).length;
+      tabs.replaceChildren(...[['all', 'All'], ...Object.entries(TYPES), ['none', 'Not set']].filter(([k]) => k !== 'none' || n('none') > 0)
+        .map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-pressed': String(tab === k), onclick: () => { tab = k; drawTabs(); drawList(allUsers); } }, `${l} (${n(k)})`)));
+    };
+    const typeCell = (u) => {
+      const wrap = h('div', { class: 'type-cell' });
+      const sel = h('select', { 'aria-label': 'User type for ' + u.email },
+        u.user_type ? null : h('option', { value: '', text: 'Not set' }),
+        Object.entries(TYPES).filter(([v]) => v !== 'customer' || (!u.is_me && u.role !== 'admin')).map(([v, l]) => h('option', { value: v, text: l })));
+      sel.value = u.user_type || '';
+      const extra = h('div');
+      const save = async (type, trucks) => {
+        sel.disabled = true; listStatus.className = 'status busy'; listStatus.textContent = 'Saving…';
+        try {
+          await rpc('web_user_set_type', { p_email: u.email, p_type: type, p_trucks: trucks || [] });
+          await refreshList();
+          listStatus.className = 'status ok'; listStatus.textContent = `${u.email} is now ${TYPES[type]}.`;
+        } catch (err) { sel.value = u.user_type || ''; listStatus.className = 'status bad'; listStatus.textContent = friendly(err); }
+        sel.disabled = false;
+      };
+      const openPicker = () => {
+        const pk = truckPicker(allTrucks, u.customer_trucks || []);
+        extra.replaceChildren(pk.el, h('div', { class: 'actions', style: 'margin-top:8px' },
+          h('button', { class: 'btn', type: 'button', text: 'Save trucks', onclick: () => {
+            if (!pk.value().length) { listStatus.className = 'status bad'; listStatus.textContent = 'Pick at least one truck.'; return; }
+            save('customer', pk.value());
+          } }),
+          h('button', { class: 'btn ghost', type: 'button', text: 'Cancel', onclick: () => { sel.value = u.user_type || ''; drawExtra(); } })));
+      };
+      const drawExtra = () => {
+        extra.replaceChildren(u.user_type === 'customer'
+          ? h('div', { class: 'note' }, 'Trucks: ' + ((u.customer_trucks || []).join(', ') || 'none') + ' · ',
+              h('button', { class: 'linkish', type: 'button', text: 'Change', onclick: openPicker }))
+          : '');
+      };
+      sel.addEventListener('change', () => {
+        if (!sel.value) return;
+        if (sel.value === 'customer') openPicker(); else save(sel.value, []);
+      });
+      drawExtra();
+      wrap.append(sel, extra);
+      return wrap;
+    };
     const drawList = (rows) => {
-      tbody.replaceChildren(...rows.map((u) => {
+      allUsers = rows;
+      drawTabs();
+      rows = rows.filter((u) => tab === 'all' || (tab === 'none' ? !u.user_type : u.user_type === tab));
+      tbody.replaceChildren(...(rows.length ? [] : [h('tr', null, h('td', { colspan: '5', class: 'muted', text: 'Nobody in this group yet.' }))]), ...rows.map((u) => {
         const sel = h('select', { 'aria-label': 'Access for ' + u.email },
           h('option', { value: 'viewer', text: 'Viewer' }), h('option', { value: 'admin', text: 'Admin' }));
         sel.value = u.role;
@@ -916,7 +1071,8 @@
             async () => { await rpc('web_user_remove', { p_email: u.email }); await refreshList(); listStatus.className = 'status ok'; listStatus.textContent = `${u.email} removed.`; }));
         return h('tr', null,
           h('td', { class: 'first', 'data-label': 'Person' }, h('div', { text: u.name || u.email }), u.name ? h('div', { class: 'note', text: u.email }) : null),
-          h('td', { 'data-label': 'Access' }, u.is_me ? h('span', { text: u.role === 'admin' ? 'Admin' : 'Viewer' }) : sel),
+          h('td', { 'data-label': 'Type' }, typeCell(u)),
+          h('td', { 'data-label': 'Access' }, u.is_me || u.user_type === 'customer' ? h('span', { text: u.role === 'admin' ? 'Admin' : 'Viewer' }) : sel),
           h('td', { 'data-label': 'Status', class: u.status === 'Active' ? 'ok' : 'warn',
             text: u.status === 'Active' ? 'Active' + (u.last_sign_in_at ? ' · last in ' + fmtDay(u.last_sign_in_at) : '') : u.status === 'Invited' ? `Invited · code works until ${fmtDay(u.invite_expires)}` : 'Code expired' }),
           h('td', { 'data-label': 'Actions' }, actions));
@@ -926,10 +1082,11 @@
     drawList(users);
     app.replaceChildren(
       h('h1', { class: 'title', text: 'Users' }),
-      h('p', { class: 'lede', text: 'People who can sign in to Farber Fleet. Viewers can look at everything; admins can also edit and add trucks and manage this list. Adding someone gives you a one-time invite code to pass on.' }),
+      h('p', { class: 'lede', text: 'People who can sign in to Farber Fleet. Staff (Sales, Service, Engineering) see the fleet; viewers look, admins can also edit and add trucks and manage this list. Customers only see the customer page for their own trucks. Adding someone gives you a one-time invite code to pass on.' }),
       codeBox, addForm,
+      tabs,
       h('div', { class: 'card scroll' }, h('table', { class: 'stack' },
-        h('thead', null, h('tr', null, ['Person', 'Access', 'Status', ''].map((x) => h('th', { text: x })))), tbody), listStatus));
+        h('thead', null, h('tr', null, ['Person', 'Type', 'Access', 'Status', ''].map((x) => h('th', { text: x })))), tbody), listStatus));
   };
 
   route();

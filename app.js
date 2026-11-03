@@ -502,7 +502,7 @@
         h('div', { class: 'kv' }, h('span', { text: 'Near' }), present(t.lat)
           ? h('a', { href: mapUrl(t.lat, t.lon), target: '_blank', rel: 'noopener', text: [t.near_city, t.near_state].filter(Boolean).join(', ') || 'Map' })
           : h('b', { text: '—' })),
-        cust ? kv('Status', t.status, null, t.status === 'Online' ? 'ok' : 'bad') : kv('Connection', t.network),
+        cust ? kv('Farber Fleet Connection', t.status, null, t.status === 'Online' ? 'ok' : 'bad') : kv('Connection', t.network),
         !cust && t.network === 'Wi-Fi' ? kv('Wi-Fi network', t.wifi_ssid) : null,
         !cust && t.network === 'Cellular' ? kv('Last on Wi-Fi', t.last_wifi_at ? ago(Math.round((Date.now() - new Date(t.last_wifi_at).getTime()) / 60000)) : 'Never') : null,
         cust ? null : kv('IP address', t.ip_addr),

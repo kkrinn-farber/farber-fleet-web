@@ -127,6 +127,10 @@
     const signedIn = me && me.status === 'member';
     if (viewAs && !(realAdmin() && TYPES[viewAs] && viewAs !== 'customer')) viewAs = null;
     $('menu-btn').hidden = !signedIn;
+    // the logo always goes home: the fleet for staff, their truck for customers
+    const home = signedIn && isCustomer() ? '#mytrucks' : '#trucks';
+    $('logo').href = home;
+    $('logo').onclick = (e) => { if (location.hash === home) { e.preventDefault(); route(); } };
     $('who').textContent = !signedIn ? '' : viewAs ? `${me.name || me.email} · viewing as ${TYPES[viewAs]}`
       : (me.name || me.email) + (me.user_type ? ' · ' + typeLabel(me.user_type) : '') + (isAdmin() ? ' · admin' : '');
     document.querySelectorAll('.admin-only').forEach((el) => { el.hidden = !isAdmin(); });

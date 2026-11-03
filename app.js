@@ -711,12 +711,12 @@
     const list = h('div', { class: 'list' });
     const draw = () => {
       const q = clean(search.value).toLowerCase();
-      const rows = data.trucks.filter((t) => !q || [t.truck_id, t.name, t.contact_name, t.city].some((v) => String(v || '').toLowerCase().includes(q)));
+      const rows = data.trucks.filter((t) => !q || [t.truck_id, t.name, t.company, t.contact_name, t.city].some((v) => String(v || '').toLowerCase().includes(q)));
       list.replaceChildren(...(rows.length ? rows.map((t) => h('a', { class: 'row', href: '#edit-' + encodeURIComponent(t.truck_id) },
         h('span', { class: 'plate', text: t.truck_id }),
         h('span', { class: 'row-main' },
           h('span', { class: 'row-name' + (t.name ? '' : ' unnamed'), text: t.name || 'No name set' }),
-          h('span', { class: 'row-sub', text: [t.contact_name, [t.city, t.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || 'No contact or address yet' })),
+          h('span', { class: 'row-sub', text: [t.company, [t.city, t.state].filter(Boolean).join(', '), t.contact_name].filter(Boolean).join(' · ') || 'No company, contact or address yet' })),
         h('span', { class: 'row-side' }, h('span', { class: 'note', text: 'Edit →' })))) : [h('div', { class: 'empty', text: 'No trucks match that search.' })]));
     };
     search.addEventListener('input', draw);

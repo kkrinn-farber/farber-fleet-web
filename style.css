@@ -195,3 +195,6 @@ pre.code { margin: 0; padding: 12px; background: var(--bg); border: 1px solid va
 .tabs button { border: 0; background: var(--panel); padding: 9px; font-weight: 500; }
 .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
 .foot { font-size: 12.5px; color: var(--muted); }
+
+.warn-list { margin: 0; padding-left: 1.1em; color: var(--warn); display: grid; gap: 2px; }
+@media (max-width: 640px) { table.stack td .warn-list { display: inline-grid; vertical-align: top; } }

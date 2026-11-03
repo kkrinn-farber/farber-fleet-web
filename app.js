@@ -133,7 +133,7 @@
     let m;
     if ((m = /^truck-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'truck', id: m[1] };
     if ((m = /^edit-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'edit', id: m[1] };
-    if (['trucks', 'offline', 'shocks', 'edit', 'new', 'users', 'account'].includes(raw)) return { page: raw, id: null };
+    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account'].includes(raw)) return { page: raw, id: null };
     return { page: 'trucks', id: null };
   };
   const go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
@@ -163,7 +163,7 @@
       app.replaceChildren(h('div', { class: 'empty', text: 'Only Farber Fleet admins can open this page.' }));
       return;
     }
-    const pages = { trucks: renderFleet, truck: renderTruck, offline: renderOffline, shocks: renderShocks,
+    const pages = { trucks: renderFleet, truck: renderTruck, offline: renderOffline, shocks: renderShocks, warnings: renderWarnings,
       edit: r.id ? renderEditor : renderEditList, new: renderEditor, users: renderUsers, account: renderAccount };
     app.replaceChildren(h('p', { class: 'loading', text: 'Loading…' }));
     try {
@@ -367,7 +367,7 @@
         h('div', { class: 'tile' }, h('h3', { text: 'Trucks' }), h('span', { class: 'big', text: num(k.trucks_total) }), h('span', { class: 'sub', text: `${num(k.trucks_online)} online now` })),
         h('a', { class: 'tile', href: '#offline' }, h('h3', { text: 'Trucks offline' }), h('span', { class: 'big' + (k.trucks_offline ? ' bad' : ''), text: num(k.trucks_offline) }), h('span', { class: 'sub', text: 'No report for 10 minutes · open list →' })),
         h('a', { class: 'tile', href: '#shocks' }, h('h3', { text: 'Shocks this week' }), h('span', { class: 'big', text: num(k.shocks_7d) }), h('span', { class: 'sub', text: `${num(k.shocks_24h)} in the last 24 hours · open list →` })),
-        h('div', { class: 'tile' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance' }))),
+        h('a', { class: 'tile', href: '#warnings' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance · open list →' }))),
       h('div', { class: 'toolbar' }, search, count),
       list);
   };
@@ -587,6 +587,26 @@
   };
 
   // ---------- offline and shocks
+  const renderWarnings = async (r, token) => {
+    const fleet = await rpc('web_fleet');
+    if (token !== renderToken) return;
+    const rows = fleet.filter((t) => t.health === 'Warning')
+      .map((t) => ({ ...t, list: String(t.warnings || '').split(', ').filter(Boolean) }))
+      .sort((a, b) => b.list.length - a.list.length || String(a.truck_id).localeCompare(String(b.truck_id)));
+    app.replaceChildren(
+      h('a', { class: 'back', href: '#trucks', text: '← All trucks' }),
+      h('h1', { class: 'title', text: `Trucks with warnings (${rows.length})` }),
+      h('p', { class: 'lede', text: 'Every truck with something that needs attention, most warnings first. Open a truck to see the details.' }),
+      rows.length ? h('div', { class: 'card scroll' }, h('table', { class: 'stack' },
+        h('thead', null, h('tr', null, ['Truck', 'Warnings', 'Status', 'Last update'].map((x) => h('th', { text: x })))),
+        h('tbody', null, rows.map((t) => h('tr', null,
+          h('td', { class: 'first', 'data-label': 'Truck' }, h('a', { href: '#truck-' + encodeURIComponent(t.truck_id), text: t.truck_id + (t.truck_name ? ' · ' + t.truck_name : '') })),
+          h('td', { 'data-label': 'Warnings' }, h('ul', { class: 'warn-list' }, t.list.map((w) => h('li', { text: w })))),
+          h('td', { 'data-label': 'Status' }, statusPill(t.status)),
+          h('td', { 'data-label': 'Last update', text: t.last_seen ? `${fmtTime(t.last_seen)} (${ago(t.minutes_since_seen)})` : 'Never reported' }))))))
+        : h('div', { class: 'empty', text: 'No warnings. Every truck is good.' }));
+  };
+
   const renderOffline = async (r, token) => {
     const rows = await rpc('web_offline');
     if (token !== renderToken) return;

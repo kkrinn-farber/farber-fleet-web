@@ -14,7 +14,7 @@ The fleet dashboard as a normal website, for people without a Claude account. It
   add trucks (which makes the tracker token) and manage users. Admins can preview the site as another
   staff type with **View as** at the top.
 - **Customers** are added on the Customers side of the Users page and must be given at least one truck. They are tied to one or more trucks and only see the customer page for those trucks
-  (`#customer-19227`, a placeholder for the coming customer portal). They never see the fleet.
+  (`#customer-19227`). They never see the fleet.
 - **Forgotten password:** an admin presses **Reset sign-in** for that person, which gives a new code.
   The person goes through **First time here** again.
 - The site files hold no data and no secrets. The Supabase *publishable* key in `config.js` is meant
@@ -60,8 +60,8 @@ repository: the token file lets anyone pretend to be a truck.
 | `#edit`, `#edit-19227` | Edit trucks (admins) |
 | `#new` | Add a truck (admins) |
 | `#users` | Users (admins): **Farber team** (types Sales/Service/Engineering, Viewer/Admin, tabs by type) and **Customers** (their trucks, **+ Add a truck** when they buy another, × to remove one) |
-| `#customer-19227` | The customer page for one truck (customer portal placeholder); staff open it with **View customer page** |
-| `#mytrucks` | A customer's own trucks |
+| `#customer-19227` | The customer's truck page: everything current (right now, maintenance, build/delivery) without their address/contact, the Farber team, IP address or firmware. Customers with several trucks switch with a dropdown. Staff open it with **View customer page** |
+| `#mytrucks` | Opens the customer's first truck |
 | `#account` | Change your password |
 
 The menu (top left) lists them, and new pages get a line there. The theme menu has the same

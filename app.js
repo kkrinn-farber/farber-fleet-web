@@ -476,13 +476,8 @@
     return svg;
   };
 
-  const renderTruck = async (r, token) => {
-    const id = r.id;
-    const [trows, maint, events] = await Promise.all([rpc('web_truck', { p_truck: id }), rpc('web_truck_maint', { p_truck: id }), rpc('web_truck_events', { p_truck: id })]);
-    if (token !== renderToken) return;
-    const t = trows[0];
-    if (!t) { app.replaceChildren(h('a', { class: 'back', href: '#trucks', text: '← All trucks' }), h('div', { class: 'empty', text: `There is no truck ${id}.` })); return; }
-
+  // shared by the staff truck page and the customer page (cust = hide IP and firmware)
+  const nowPanelsFor = (t, maint, cust) => {
     const needs = (k) => t['has_' + k];
     const nowPanels = [
       needs('temps') && panel('Temperatures',
@@ -510,8 +505,8 @@
         kv('Connection', t.network),
         t.network === 'Wi-Fi' ? kv('Wi-Fi network', t.wifi_ssid) : null,
         t.network === 'Cellular' ? kv('Last on Wi-Fi', t.last_wifi_at ? ago(Math.round((Date.now() - new Date(t.last_wifi_at).getTime()) / 60000)) : 'Never') : null,
-        kv('IP address', t.ip_addr),
-        kv('Firmware', t.fw)),
+        cust ? null : kv('IP address', t.ip_addr),
+        cust ? null : kv('Firmware', t.fw)),
     ].filter(Boolean);
 
     const hrsFmt = (v, d) => num(v, d === undefined ? (Number.isInteger(Number(v)) ? 0 : 1) : d) + ' h';
@@ -529,6 +524,20 @@
         h('td', { 'data-label': 'Next due', text: [byHours && present(m.next_due_hours) ? `at ${hrsFmt(m.next_due_hours)}` : '', m.next_due ? fmtDay(m.next_due) : ''].filter(Boolean).join(' or ') || '—' }),
         h('td', { 'data-label': 'Status', class: cls, text: st }));
     });
+    return { nowPanels, maintRows };
+  };
+  const maintTable = (maintRows) => h('div', { class: 'card scroll' }, maintRows.length ? h('table', { class: 'stack' },
+    h('thead', null, h('tr', null, ['Item', 'Last done', 'Due every', 'Next due', 'Status'].map((x) => h('th', { text: x })))),
+    h('tbody', null, maintRows)) : h('p', { class: 'muted', text: 'No maintenance items.' }));
+
+  const renderTruck = async (r, token) => {
+    const id = r.id;
+    const [trows, maint, events] = await Promise.all([rpc('web_truck', { p_truck: id }), rpc('web_truck_maint', { p_truck: id }), rpc('web_truck_events', { p_truck: id })]);
+    if (token !== renderToken) return;
+    const t = trows[0];
+    if (!t) { app.replaceChildren(h('a', { class: 'back', href: '#trucks', text: '← All trucks' }), h('div', { class: 'empty', text: `There is no truck ${id}.` })); return; }
+
+    const { nowPanels, maintRows } = nowPanelsFor(t, maint, false);
 
     const histBox = h('div', { class: 'charts' }, h('p', { class: 'loading', text: 'Loading history…' }));
     const routeBox = h('div', { class: 'card' });
@@ -592,9 +601,7 @@
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report. Equipment this truck doesn’t have is left out.' })),
       h('div', { class: 'panels' }, nowPanels),
       h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Overdue items turn the truck to Warning. Generator oil goes by the hour meter.' })),
-      h('div', { class: 'card scroll' }, maintRows.length ? h('table', { class: 'stack' },
-        h('thead', null, h('tr', null, ['Item', 'Last done', 'Due every', 'Next due', 'Status'].map((x) => h('th', { text: x })))),
-        h('tbody', null, maintRows)) : h('p', { class: 'muted', text: 'No maintenance items.' })),
+      maintTable(maintRows),
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' },
         panel('Build and delivery', kv('Build date', t.build_date), kv('Delivery date', t.delivery_date), kv('In service', t.in_service)),
@@ -865,11 +872,15 @@
         copyStatus));
   };
 
-  // ---------- customer portal (placeholder; the real portal comes later)
+  // ---------- customer portal: the customer's own truck, current information only
   const renderCustomer = async (r, token) => {
-    let t;
-    try { t = await rpc('web_customer_truck', { p_truck: r.id }); }
-    catch (err) {
+    let t, maint, mine = [];
+    try {
+      [t, maint, mine] = await Promise.all([
+        rpc('web_customer_truck', { p_truck: r.id }),
+        rpc('web_customer_maint', { p_truck: r.id }),
+        isCustomer() ? rpc('web_my_trucks') : Promise.resolve([])]);
+    } catch (err) {
       if (!/Not allowed/i.test(err.message || '')) throw err;
       app.replaceChildren(h('div', { class: 'empty', text: 'This truck isn’t linked to your account.' },
         isCustomer() ? h('div', { style: 'margin-top:12px' }, h('a', { class: 'btn ghost', href: '#mytrucks', text: 'My trucks' })) : null));
@@ -877,31 +888,38 @@
     }
     if (token !== renderToken) return;
     if (!t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
-    const back = isCustomer()
-      ? ((me.customer_trucks || []).length > 1 ? h('a', { class: 'back', href: '#mytrucks', text: '← My trucks' }) : null)
-      : h('a', { class: 'back', href: '#truck-' + encodeURIComponent(t.truck_id), text: '← Back to the truck page' });
+    const { nowPanels, maintRows } = nowPanelsFor(t, maint, true);
+    // more than one truck: a dropdown to switch
+    let picker = null;
+    if (mine.length > 1) {
+      const sel = h('select', { id: 'cust-truck', 'aria-label': 'Choose a truck' },
+        mine.map((x) => h('option', { value: x.truck_id, text: x.truck_id + (x.truck_name ? ' · ' + x.truck_name : '') })));
+      sel.value = t.truck_id;
+      sel.addEventListener('change', () => { location.hash = '#customer-' + encodeURIComponent(sel.value); });
+      picker = h('div', { class: 'truck-switch' }, h('label', { for: 'cust-truck', text: `Your trucks (${mine.length})` }), sel);
+    }
     app.replaceChildren(...[
-      back,
-      isCustomer() ? null : h('div', { class: 'notice' }, h('strong', { text: 'Customer view' }), h('span', { text: ' This is the page the truck’s customer will see.' })),
-      h('p', { class: 'eyebrow', text: 'Customer portal' }),
+      isCustomer() ? null : h('a', { class: 'back', href: '#truck-' + encodeURIComponent(t.truck_id), text: '← Back to the truck page' }),
+      isCustomer() ? null : h('div', { class: 'notice' }, h('strong', { text: 'Customer view' }), h('span', { text: ' This is the page the truck’s customer sees. Their address and contact, the Farber team, IP address and firmware are hidden.' })),
+      picker,
       h('h1', { class: 'title' }, t.truck_id, t.truck_name ? h('span', { class: 'sub', text: ' · ' + t.truck_name }) : null),
-      h('div', { class: 'meta' }, statusPill(t.status), h('span', { text: 'Last report ' + ago(t.minutes_since_seen) })),
-      h('div', { class: 'card' },
-        h('h2', { text: 'Coming soon' }),
-        h('p', { class: 'muted', style: 'margin-top:6px', text: 'The customer portal for this truck is being built. It will live on this page.' })),
+      h('div', { class: 'meta' }, statusPill(t.status), healthPill(t.health), t.warnings ? h('span', { class: 'why', text: t.warnings }) : null,
+        h('span', { text: 'Last report ' + ago(t.minutes_since_seen) })),
+      h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report from your truck.' })),
+      h('div', { class: 'panels' }, nowPanels),
+      h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' })),
+      maintTable(maintRows),
+      h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
+      h('div', { class: 'panels' }, panel('Build and delivery', kv('Build date', t.build_date), kv('Delivery date', t.delivery_date), kv('In service', t.in_service))),
     ].filter(Boolean));
   };
+  // "My trucks" opens the first truck; the dropdown on that page switches between them
   const renderMyTrucks = async (r, token) => {
     const rows = await rpc('web_my_trucks');
     if (token !== renderToken) return;
-    if (rows.length === 1) { location.replace('#customer-' + encodeURIComponent(rows[0].truck_id)); return; }
-    app.replaceChildren(
-      h('h1', { class: 'title', text: 'My trucks' }),
-      rows.length ? h('div', { class: 'list' }, rows.map((t) => h('a', { class: 'row', href: '#customer-' + encodeURIComponent(t.truck_id) },
-        h('span', { class: 'plate', text: t.truck_id }),
-        h('span', { class: 'row-main' }, h('span', { class: 'row-name', text: t.truck_name || 'Truck ' + t.truck_id })),
-        h('span', { class: 'row-side' }, h('span', { class: 'note', text: 'Open →' })))))
-        : h('div', { class: 'empty', text: 'No trucks are linked to your account yet. Ask Farber to add them.' }));
+    if (rows.length) { location.replace('#customer-' + encodeURIComponent(rows[0].truck_id)); return; }
+    app.replaceChildren(h('h1', { class: 'title', text: 'My trucks' }),
+      h('div', { class: 'empty', text: 'No trucks are linked to your account yet. Ask Farber to add them.' }));
   };
 
   // ---------- users (admin)

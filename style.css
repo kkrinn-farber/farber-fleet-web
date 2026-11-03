@@ -225,3 +225,6 @@ pre.code { margin: 0; padding: 12px; background: var(--bg); border: 1px solid va
 .truck-cell > .btn, .truck-cell > .actions { justify-self: start; }
 .section-switch { justify-self: start; }
 .tabs-row { justify-self: start; }
+.truck-switch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-self: start; }
+.truck-switch label { font-size: 13px; color: var(--muted); }
+.truck-switch select { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 15px; font-weight: 600; max-width: 100%; }

@@ -17,7 +17,7 @@
     cabinetry_lead: (s) => s.department === 'Cabinet Shop',
     purchasing: (s) => s.department === 'Purchasing',
   };
-  const TEXT_KEYS = ['name', 'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country',
+  const TEXT_KEYS = ['name', 'company', 'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country',
     'contact_name', 'contact_title', 'contact_phone', 'contact_email'];
   const ID_OK = /^[A-Za-z0-9_-]{1,32}$/;
   const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -622,7 +622,7 @@
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' },
         panel('Build and delivery', kv('Build date', t.build_date), kv('Delivery date', t.delivery_date), kv('In service', t.in_service)),
-        panel('Address', h('address', { class: 'addr' }, [t.address_line1, t.address_line2, t.address_city, t.address_country].filter(present).map((x) => h('span', { text: x })))),
+        panel('Address', h('address', { class: 'addr' }, t.company ? h('strong', { text: t.company }) : null, [t.address_line1, t.address_line2, t.address_city, t.address_country].filter(present).map((x) => h('span', { text: x })))),
         panel('Contact', kv('Name', t.contact_name), kv('Title', t.contact_title),
           h('div', { class: 'kv' }, h('span', { text: 'Phone' }), t.contact_phone ? h('a', { href: 'tel:' + String(t.contact_phone).replace(/[^0-9+]/g, ''), text: t.contact_phone }) : h('b', { text: '—' })),
           h('div', { class: 'kv' }, h('span', { text: 'Email' }), t.contact_email ? h('a', { href: 'mailto:' + t.contact_email, text: t.contact_email }) : h('b', { text: '—' }))),
@@ -782,6 +782,7 @@
         mk('name', 'Name', { maxlength: '64', placeholder: 'No name set' }, true),
         mk('build_date', 'Build date', { type: 'date' }), mk('delivery_date', 'Delivery date', { type: 'date' }))),
       h('fieldset', null, h('legend', { text: 'Address' }), h('div', { class: 'grid' },
+        mk('company', 'Company', { maxlength: '120' }, true),
         mk('address_line1', 'Street', { maxlength: '120' }, true), mk('address_line2', 'Building, suite or unit', { maxlength: '120' }, true),
         mk('city', 'City', { maxlength: '80' }), mk('state', 'State', { maxlength: '40' }), mk('postal_code', 'ZIP / postal code', { maxlength: '20' }),
         mk('country', 'Country', { maxlength: '60' }))),

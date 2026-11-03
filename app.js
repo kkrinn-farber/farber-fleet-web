@@ -461,7 +461,7 @@
       needs('temps') && panel('Temperatures',
         [1, 2, 3, 4, 5, 6].map((i) => kv(t['temp' + i + '_label'] || 'Temp ' + i, num(t['temp' + i + '_f'], 1), '°F'))),
       panel('Truck',
-        kv('Engine', t.engine), kv('Speed', num(t.speed_mph), ' mph'), kv('RPM', num(t.rpm)), kv('Fuel', num(t.fuel_pct), '%'),
+        kv('Engine', t.engine), kv('Speed', num(t.speed_mph), ' mph'), kv('RPM', num(t.rpm)), kv('Mileage', num(t.odometer_mi), ' mi'), kv('Fuel', num(t.fuel_pct), '%'),
         needs('oil') && kv('Oil pressure', num(t.oil_psi), ' psi'), kv('Coolant', num(t.coolant_f), '°F'),
         kv('Fault codes', present(t.dtc_count) ? t.dtc_count : null, null, t.dtc_count > 0 ? 'bad' : null)),
       panel('Batteries',

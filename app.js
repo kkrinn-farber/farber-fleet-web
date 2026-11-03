@@ -573,11 +573,13 @@
       }
     };
 
-    const eventRows = events.map((e) => h('tr', null,
+    const eventRows = events.map((e) => h('tr', { class: e.kind === 'warning' ? 'warn-row' : null },
       h('td', { class: 'first', 'data-label': 'When', text: fmtTime(e.at) }),
-      h('td', { 'data-label': 'Event', text: e.event }),
-      h('td', { 'data-label': 'Peak', text: present(e.peak_g) ? num(e.peak_g, 1) + ' g' : '—' }),
-      h('td', { 'data-label': 'Map' }, present(e.lat) ? h('a', { href: mapUrl(e.lat, e.lon), target: '_blank', rel: 'noopener', text: 'Map ↗' }) : '—')));
+      h('td', { 'data-label': 'Event', class: e.kind === 'warning' ? 'warn' : null, text: e.event }),
+      h('td', { 'data-label': 'Where' }, present(e.lat)
+        ? h('a', { href: mapUrl(e.lat, e.lon), target: '_blank', rel: 'noopener', text: [e.near_city, e.near_state].filter(Boolean).join(', ') || 'Map' })
+        : '—'),
+      h('td', { 'data-label': 'Peak', text: present(e.peak_g) ? num(e.peak_g, 1) + ' g' : '—' })));
 
     const team = ROLE_FIELDS.map(([k, label]) => kv(label, t[k]));
     const detailPanels = [
@@ -612,9 +614,9 @@
       isServiceView() ? h('div', { class: 'actions service-actions' }, Object.entries(SERVICE_PAGES).map(([k, label]) =>
         h('a', { class: 'btn', href: '#' + k + '-' + encodeURIComponent(t.truck_id), text: label }))) : null,
       maintTable(maintRows),
-      h('div', { class: 'section-head' }, h('h2', { text: 'Events' }), h('p', { class: 'note', text: 'Last 30 days' })),
+      h('div', { class: 'section-head' }, h('h2', { text: 'Events' }), h('p', { class: 'note', text: 'Last 30 days, with when and where each warning started' })),
       h('div', { class: 'card scroll' }, eventRows.length ? h('table', { class: 'stack' },
-        h('thead', null, h('tr', null, ['When', 'Event', 'Peak', 'Map'].map((x) => h('th', { text: x })))),
+        h('thead', null, h('tr', null, ['When', 'Event', 'Where', 'Peak'].map((x) => h('th', { text: x })))),
         h('tbody', null, eventRows)) : h('p', { class: 'muted', text: 'No events in the last 30 days.' })),
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report. Equipment this truck doesn’t have is left out.' })),
       h('div', { class: 'panels' }, nowPanels),

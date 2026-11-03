@@ -60,7 +60,7 @@ repository: the token file lets anyone pretend to be a truck.
 | `#edit`, `#edit-19227` | Edit trucks (admins) |
 | `#new` | Add a truck (admins) |
 | `#users` | Users (admins): **Farber team** (types Sales/Service/Engineering, Viewer/Admin, tabs by type) and **Customers** (their trucks, **+ Add a truck** when they buy another, × to remove one) |
-| `#customer-19227` | The customer's truck page: everything current (right now, maintenance, build/delivery) without their address/contact, the Farber team, IP address, firmware or connection details (Location shows Online or Offline instead). Customers with several trucks switch with a dropdown. Staff open it with **View customer page** |
+| `#customer-19227` | The customer's truck page: everything current (right now, maintenance, build/delivery) without their address/contact, the Farber team, IP address, firmware or connection details (Location shows Online or Offline instead). Customers with several trucks switch with a dropdown. Admins open it with **View customer page** |
 | `#mytrucks` | Opens the customer's first truck |
 | `#account` | Change your password |
 

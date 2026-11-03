@@ -601,7 +601,7 @@
       h('div', { class: 'meta' }, statusPill(t.status), healthPill(t.health), t.warnings ? h('span', { class: 'why', text: t.warnings }) : null,
         h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }),
         isAdmin() ? h('a', { href: '#edit-' + encodeURIComponent(t.truck_id), text: 'Edit truck' }) : null,
-        h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' })),
+        isAdmin() ? h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' }) : null),
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report. Equipment this truck doesn’t have is left out.' })),
       h('div', { class: 'panels' }, nowPanels),
       h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Overdue items turn the truck to Warning. Generator oil goes by the hour meter.' })),
@@ -878,6 +878,8 @@
 
   // ---------- customer portal: the customer's own truck, current information only
   const renderCustomer = async (r, token) => {
+    // staff preview of the customer page is for admins only
+    if (!isCustomer() && !isAdmin()) { location.replace('#truck-' + encodeURIComponent(r.id)); return; }
     let t, maint, mine = [];
     try {
       [t, maint, mine] = await Promise.all([

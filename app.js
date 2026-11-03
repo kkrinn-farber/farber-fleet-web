@@ -484,7 +484,6 @@
         t.network === 'Wi-Fi' ? kv('Wi-Fi network', t.wifi_ssid) : null,
         t.network === 'Cellular' ? kv('Last on Wi-Fi', t.last_wifi_at ? ago(Math.round((Date.now() - new Date(t.last_wifi_at).getTime()) / 60000)) : 'Never') : null,
         kv('IP address', t.ip_addr),
-        kv('Internet', t.internet, null, t.internet === 'No' ? 'bad' : null),
         kv('Firmware', t.fw)),
     ].filter(Boolean);
 

@@ -459,12 +459,7 @@
     const needs = (k) => t['has_' + k];
     const nowPanels = [
       needs('temps') && panel('Temperatures',
-        kv('Chassis battery compartment', num(t.temp_chassis_batt_f, 1), '°F'),
-        kv('Aux battery compartment', num(t.temp_aux_batt_f, 1), '°F'),
-        kv('Rack', num(t.temp_rack_f, 1), '°F'),
-        kv('Front room', num(t.temp_front_f, 1), '°F'),
-        kv('Mid room', num(t.temp_mid_f, 1), '°F'),
-        kv('Rear room', num(t.temp_rear_f, 1), '°F')),
+        [1, 2, 3, 4, 5, 6].map((i) => kv(t['temp' + i + '_label'] || 'Temp ' + i, num(t['temp' + i + '_f'], 1), '°F'))),
       panel('Truck',
         kv('Engine', t.engine), kv('Speed', num(t.speed_mph), ' mph'), kv('RPM', num(t.rpm)), kv('Fuel', num(t.fuel_pct), '%'),
         needs('oil') && kv('Oil pressure', num(t.oil_psi), ' psi'), kv('Coolant', num(t.coolant_f), '°F'),
@@ -520,8 +515,8 @@
         if (tk !== renderToken) return;
         const defs = [
           ['Speed', [{ key: 'speed_mph', label: 'Speed' }], ' mph', 0],
-          ['Room temperatures', [{ key: 'temp_front_f', label: 'Front' }, { key: 'temp_mid_f', label: 'Mid' }, { key: 'temp_rear_f', label: 'Rear' }], '°F', 1],
-          ['Compartment temperatures', [{ key: 'temp_chassis_batt_f', label: 'Chassis battery' }, { key: 'temp_aux_batt_f', label: 'Aux battery' }, { key: 'temp_rack_f', label: 'Rack' }], '°F', 1],
+          ['Temperatures 1–3', [1, 2, 3].map((i) => ({ key: 'temp' + i + '_f', label: t['temp' + i + '_label'] || 'Temp ' + i })), '°F', 1],
+          ['Temperatures 4–6', [4, 5, 6].map((i) => ({ key: 'temp' + i + '_f', label: t['temp' + i + '_label'] || 'Temp ' + i })), '°F', 1],
           ['Batteries', [{ key: 'chassis_v', label: 'Chassis' }, { key: 'aux_v', label: 'Aux' }], ' V', 2],
           ['Fuel', [{ key: 'fuel_pct', label: 'Fuel' }], '%', 0],
           ['Water tanks', [{ key: 'fresh_pct', label: 'Fresh' }, { key: 'gray_pct', label: 'Gray' }, { key: 'black_pct', label: 'Black' }], '%', 0],
@@ -661,7 +656,9 @@
     const isNew = r.page === 'new';
     const data = await loadEditData();
     if (token !== renderToken) return;
-    const t = isNew ? { truck_id: '', country: 'USA', team: {} } : data.trucks.find((x) => x.truck_id === r.id);
+    const TEMP_DEFAULTS = ['Chassis battery compartment', 'Aux battery compartment', 'Rack', 'Front room', 'Mid room', 'Rear room'];
+    const t = isNew ? { truck_id: '', country: 'USA', team: {}, ...Object.fromEntries(TEMP_DEFAULTS.map((d, i) => ['temp' + (i + 1) + '_label', d])) }
+      : data.trucks.find((x) => x.truck_id === r.id);
     if (!t) { app.replaceChildren(h('a', { class: 'back', href: '#edit', text: '← All trucks' }), h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
     const inputs = {};
     const mk = (key, label, attrs, wide) => {
@@ -715,6 +712,9 @@
       h('fieldset', null, h('legend', { text: 'Contact' }), h('div', { class: 'grid' },
         mk('contact_name', 'Name', { maxlength: '80' }), mk('contact_title', 'Title', { maxlength: '80' }),
         mk('contact_phone', 'Phone', { type: 'tel', maxlength: '40' }), mk('contact_email', 'Email', { type: 'email', maxlength: '120' }))),
+      h('fieldset', null, h('legend', { text: 'Temperature sensor names' }),
+        h('p', { class: 'note', style: 'margin-bottom:8px', text: 'What each of the tracker’s six temperature sensors measures on this truck. Leave a box empty to use the standard name.' }),
+        h('div', { class: 'grid' }, [1, 2, 3, 4, 5, 6].map((i) => mk('temp' + i + '_label', 'Sensor ' + i, { maxlength: '40', placeholder: TEMP_DEFAULTS[i - 1] })))),
       h('fieldset', null, h('legend', { text: 'Farber team' }), h('div', { class: 'grid' }, teamFields)),
       h('div', { class: 'actions sticky' }, save, undo, status));
     start = snapshot();

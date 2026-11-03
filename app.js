@@ -373,7 +373,7 @@
   };
 
   // ---------- one truck
-  const kv = (label, value, unit, cls) => h('div', { class: 'kv' }, h('span', { text: label }),
+  const kv = (label, value, unit, cls) => h('div', { class: 'kv' }, h('span', { text: label, title: label }),
     h('b', { class: cls || null }, present(value) ? String(value) : '—', present(value) && unit ? h('span', { class: 'unit', text: unit }) : null));
   const panel = (title, ...rows) => h('div', { class: 'card panel' }, h('h3', { text: title }), ...rows);
   const tone = (field, v) => {

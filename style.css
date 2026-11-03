@@ -129,12 +129,14 @@ a.row:hover { border-color: var(--muted); }
 
 /* ---------- truck page */
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 14px; color: var(--muted); }
-.panels { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
+.panels { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); }
 .panel h3 { font-size: 1rem; font-weight: 600; margin-bottom: 6px; }
 .kv { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 14px; font-variant-numeric: tabular-nums; }
 .kv:last-child { border-bottom: 0; }
 .kv > span:first-child { color: var(--muted); }
-.kv > b, .kv > a, .kv > span:last-child { text-align: right; overflow-wrap: anywhere; }
+.kv > span:first-child { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kv > b, .kv > a, .kv > span:last-child { flex: 0 0 auto; text-align: right; white-space: nowrap; }
+.kv > a { white-space: normal; overflow-wrap: anywhere; flex-shrink: 1; max-width: 70%; }
 .addr { display: grid; gap: 2px; font-style: normal; }
 .unit { color: var(--muted); font-weight: 400; margin-left: 2px; }
 

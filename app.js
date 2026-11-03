@@ -71,6 +71,9 @@
   // Sales (or an admin viewing as Sales) sees connection status only, no network details
   const isSalesView = () => !!me && !isAdmin() && (viewAs || me.user_type) === 'sales';
   const NET_WARNINGS = ['No internet', 'On cellular with power on'];
+  // Service (or an admin) gets the work-history / maintenance buttons
+  const isServiceView = () => !!me && (isAdmin() || (viewAs || me.user_type) === 'service');
+  const SERVICE_PAGES = { work: 'Full history of work', schedule: 'Schedule maintenance', done: 'Add maintenance completed' };
   const typeLabel = (t) => TYPES[t] || 'Not set';
 
   const showNotice = (title, body, kind) => {
@@ -164,6 +167,7 @@
     if ((m = /^truck-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'truck', id: m[1] };
     if ((m = /^edit-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'edit', id: m[1] };
     if ((m = /^customer-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'customer', id: m[1] };
+    if ((m = /^(work|schedule|done)-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'service', kind: m[1], id: m[2] };
     if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks'].includes(raw)) return { page: raw, id: null };
     return { page: 'trucks', id: null };
   };
@@ -189,7 +193,7 @@
     let r = parse();
     // Customers only get their own trucks' customer pages and their account.
     if (isCustomer() && !['customer', 'account', 'mytrucks'].includes(r.page)) r = { page: 'mytrucks', id: null };
-    markMenu(r.page === 'truck' ? 'trucks' : r.page);
+    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page);
     window.scrollTo(0, 0);
     const adminPages = ['edit', 'new', 'users'];
     if (adminPages.includes(r.page) && !isAdmin()) {
@@ -198,7 +202,7 @@
     }
     const pages = { trucks: renderFleet, truck: renderTruck, offline: renderOffline, shocks: renderShocks, warnings: renderWarnings,
       edit: r.id ? renderEditor : renderEditList, new: renderEditor, users: renderUsers, account: renderAccount,
-      customer: renderCustomer, mytrucks: renderMyTrucks };
+      customer: renderCustomer, mytrucks: renderMyTrucks, service: renderServicePage };
     app.replaceChildren(h('p', { class: 'loading', text: 'Loading…' }));
     try {
       await pages[r.page](r, token);
@@ -612,6 +616,8 @@
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report. Equipment this truck doesn’t have is left out.' })),
       h('div', { class: 'panels' }, nowPanels),
       h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Overdue items turn the truck to Warning. Generator oil goes by the hour meter.' })),
+      isServiceView() ? h('div', { class: 'actions service-actions' }, Object.entries(SERVICE_PAGES).map(([k, label]) =>
+        h('a', { class: 'btn' + (k === 'work' ? ' ghost' : ''), href: '#' + k + '-' + encodeURIComponent(t.truck_id), text: label }))) : null,
       maintTable(maintRows),
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' },
@@ -881,6 +887,28 @@
         isNew ? h('a', { href: '#truck-' + encodeURIComponent(res.truck_id), text: 'Open its page' }) : null,
         isNew ? h('a', { href: '#edit-' + encodeURIComponent(res.truck_id), text: 'Edit it' }) : null,
         copyStatus));
+  };
+
+  // ---------- service pages (placeholders; built later)
+  const renderServicePage = async (r, token) => {
+    if (!isServiceView()) { location.replace('#truck-' + encodeURIComponent(r.id)); return; }
+    const rows = await rpc('web_truck', { p_truck: r.id });
+    if (token !== renderToken) return;
+    const t = rows[0];
+    if (!t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
+    const blurb = {
+      work: 'Every repair, service visit and maintenance job done on this truck, newest first.',
+      schedule: 'Book upcoming maintenance or a service visit for this truck.',
+      done: 'Record maintenance that has been finished, so the due dates on the truck page update.',
+    }[r.kind];
+    app.replaceChildren(
+      h('a', { class: 'back', href: '#truck-' + encodeURIComponent(t.truck_id), text: '← Back to the truck page' }),
+      h('p', { class: 'eyebrow', text: 'Service' }),
+      h('h1', { class: 'title' }, SERVICE_PAGES[r.kind]),
+      h('p', { class: 'lede' }, h('strong', { text: t.truck_id }), t.truck_name ? ' · ' + t.truck_name : ''),
+      h('div', { class: 'card' },
+        h('h2', { text: 'Coming soon' }),
+        h('p', { class: 'muted', style: 'margin-top:6px', text: blurb + ' This page is being built.' })));
   };
 
   // ---------- customer portal: the customer's own truck, current information only

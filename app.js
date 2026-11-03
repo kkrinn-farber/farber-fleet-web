@@ -73,7 +73,7 @@
   const NET_WARNINGS = ['No internet', 'On cellular with power on'];
   // Service (or an admin) gets the work-history / maintenance buttons
   const isServiceView = () => !!me && (isAdmin() || (viewAs || me.user_type) === 'service');
-  const SERVICE_PAGES = { work: 'Full history of work', schedule: 'Schedule maintenance', done: 'Add maintenance completed' };
+  const SERVICE_PAGES = { work: 'Maintenance history', schedule: 'Schedule maintenance', done: 'Add maintenance completed' };
   const typeLabel = (t) => TYPES[t] || 'Not set';
 
   const showNotice = (title, body, kind) => {
@@ -639,7 +639,7 @@
       h('div', { class: 'panels' }, nowPanels),
       h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Overdue items turn the truck to Warning. Generator oil goes by the hour meter.' })),
       isServiceView() ? h('div', { class: 'actions service-actions' }, Object.entries(SERVICE_PAGES).map(([k, label]) =>
-        h('a', { class: 'btn' + (k === 'work' ? ' ghost' : ''), href: '#' + k + '-' + encodeURIComponent(t.truck_id), text: label }))) : null,
+        h('a', { class: 'btn', href: '#' + k + '-' + encodeURIComponent(t.truck_id), text: label }))) : null,
       maintTable(maintRows),
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' },

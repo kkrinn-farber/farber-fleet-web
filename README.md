@@ -52,6 +52,7 @@ repository: the token file lets anyone pretend to be a truck.
 | `#truck-19227` | One truck: right now, maintenance, details, Farber team, history charts, route, events |
 | `#offline` | Trucks offline, with batteries, last location and map links |
 | `#shocks` | Shocks this week, with speed, severity, city/state and map links |
+| `#warnings` | Trucks with warnings: every warning per truck, status and last update |
 | `#edit`, `#edit-19227` | Edit trucks (admins) |
 | `#new` | Add a truck (admins) |
 | `#users` | Users and invite codes (admins) |

@@ -498,13 +498,13 @@
       needs('solar') && panel('Solar', kv('Output', num(t.solar_w), ' W')),
       needs('plumbing') && panel('Water', kv('Fresh', num(t.fresh_pct), '%'), kv('Gray', num(t.gray_pct), '%'), kv('Black', num(t.black_pct), '%'), kv('Pump', t.pump)),
       needs('jacks') && panel('Jacks', kv('Jacks', t.jacks, null, t.jacks === 'Error' ? 'bad' : null), kv('Error code', t.jacks_error_code)),
-      panel('Location and network',
+      panel(cust ? 'Location' : 'Location and network',
         h('div', { class: 'kv' }, h('span', { text: 'Near' }), present(t.lat)
           ? h('a', { href: mapUrl(t.lat, t.lon), target: '_blank', rel: 'noopener', text: [t.near_city, t.near_state].filter(Boolean).join(', ') || 'Map' })
           : h('b', { text: '—' })),
-        kv('Connection', t.network),
-        t.network === 'Wi-Fi' ? kv('Wi-Fi network', t.wifi_ssid) : null,
-        t.network === 'Cellular' ? kv('Last on Wi-Fi', t.last_wifi_at ? ago(Math.round((Date.now() - new Date(t.last_wifi_at).getTime()) / 60000)) : 'Never') : null,
+        cust ? kv('Status', t.status, null, t.status === 'Online' ? 'ok' : 'bad') : kv('Connection', t.network),
+        !cust && t.network === 'Wi-Fi' ? kv('Wi-Fi network', t.wifi_ssid) : null,
+        !cust && t.network === 'Cellular' ? kv('Last on Wi-Fi', t.last_wifi_at ? ago(Math.round((Date.now() - new Date(t.last_wifi_at).getTime()) / 60000)) : 'Never') : null,
         cust ? null : kv('IP address', t.ip_addr),
         cust ? null : kv('Firmware', t.fw)),
     ].filter(Boolean);

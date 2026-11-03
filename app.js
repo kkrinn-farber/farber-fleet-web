@@ -606,13 +606,31 @@
       h('td', { 'data-label': 'Map' }, present(e.lat) ? h('a', { href: mapUrl(e.lat, e.lon), target: '_blank', rel: 'noopener', text: 'Map ↗' }) : '—')));
 
     const team = ROLE_FIELDS.map(([k, label]) => kv(label, t[k]));
+    const detailPanels = [
+        panel('Build and delivery', kv('Build date', t.build_date), kv('Delivery date', t.delivery_date), kv('In service', t.in_service)),
+        panel('Address', h('address', { class: 'addr' }, t.company ? h('strong', { text: t.company }) : null, [t.address_line1, t.address_line2, t.address_city, t.address_country].filter(present).map((x) => h('span', { text: x })))),
+        panel('Contact', kv('Name', t.contact_name), kv('Title', t.contact_title),
+          h('div', { class: 'kv' }, h('span', { text: 'Phone' }), t.contact_phone ? h('a', { href: 'tel:' + String(t.contact_phone).replace(/[^0-9+]/g, ''), text: t.contact_phone }) : h('b', { text: '—' })),
+          h('div', { class: 'kv' }, h('span', { text: 'Email' }), t.contact_email ? h('a', { href: 'mailto:' + t.contact_email, text: t.contact_email }) : h('b', { text: '—' }))),
+        panel('Farber team', team)];
+    const customerBtn = h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' });
+    // Sales: location, truck details and the customer page only
+    if (isSalesView()) {
+      app.replaceChildren(
+        h('a', { class: 'back', href: '#trucks', text: '← All trucks' }),
+        h('h1', { class: 'title' }, t.truck_id, t.truck_name ? h('span', { class: 'sub', text: ' · ' + t.truck_name }) : null),
+        h('div', { class: 'meta' }, statusPill(t.status), h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }), customerBtn),
+        h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
+        h('div', { class: 'panels' }, nowPanels[nowPanels.length - 1], ...detailPanels));
+      return;
+    }
     app.replaceChildren(
       h('a', { class: 'back', href: '#trucks', text: '← All trucks' }),
       h('h1', { class: 'title' }, t.truck_id, t.truck_name ? h('span', { class: 'sub', text: ' · ' + t.truck_name }) : null),
       h('div', { class: 'meta' }, statusPill(t.status), healthPill(t.health), t.warnings ? h('span', { class: 'why', text: t.warnings }) : null,
         h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }),
         isAdmin() ? h('a', { href: '#edit-' + encodeURIComponent(t.truck_id), text: 'Edit truck' }) : null,
-        isAdmin() ? h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' }) : null),
+        isAdmin() ? customerBtn : null),
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report. Equipment this truck doesn’t have is left out.' })),
       h('div', { class: 'panels' }, nowPanels),
       h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Overdue items turn the truck to Warning. Generator oil goes by the hour meter.' })),
@@ -621,12 +639,7 @@
       maintTable(maintRows),
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' },
-        panel('Build and delivery', kv('Build date', t.build_date), kv('Delivery date', t.delivery_date), kv('In service', t.in_service)),
-        panel('Address', h('address', { class: 'addr' }, t.company ? h('strong', { text: t.company }) : null, [t.address_line1, t.address_line2, t.address_city, t.address_country].filter(present).map((x) => h('span', { text: x })))),
-        panel('Contact', kv('Name', t.contact_name), kv('Title', t.contact_title),
-          h('div', { class: 'kv' }, h('span', { text: 'Phone' }), t.contact_phone ? h('a', { href: 'tel:' + String(t.contact_phone).replace(/[^0-9+]/g, ''), text: t.contact_phone }) : h('b', { text: '—' })),
-          h('div', { class: 'kv' }, h('span', { text: 'Email' }), t.contact_email ? h('a', { href: 'mailto:' + t.contact_email, text: t.contact_email }) : h('b', { text: '—' }))),
-        panel('Farber team', team)),
+        ...detailPanels),
       h('div', { class: 'section-head' }, h('h2', { text: 'History' }), seg),
       histBox,
       routeBox,
@@ -914,8 +927,8 @@
 
   // ---------- customer portal: the customer's own truck, current information only
   const renderCustomer = async (r, token) => {
-    // staff preview of the customer page is for admins only
-    if (!isCustomer() && !isAdmin()) { location.replace('#truck-' + encodeURIComponent(r.id)); return; }
+    // staff preview of the customer page: admins and Sales
+    if (!isCustomer() && !isAdmin() && !isSalesView()) { location.replace('#truck-' + encodeURIComponent(r.id)); return; }
     let t, maint, mine = [];
     try {
       [t, maint, mine] = await Promise.all([

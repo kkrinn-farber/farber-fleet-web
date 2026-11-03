@@ -10,10 +10,8 @@ The fleet dashboard as a normal website, for people without a Claude account. It
 - The person opens the site, presses **First time here**, enters that email, chooses a password and
   types the code. From then on they sign in with email and password.
 - Every person has a **user type**: Sales, Service, Engineering or Customer (picked when inviting).
-- Staff (Sales, Service, Engineering) see the fleet. On a truck page, **Sales** sees Location with the Farber Fleet Connection (Online/Offline) instead of the
-  network details (connection, Wi-Fi, IP, firmware) and network warnings. **Viewers** look; **Admins** can also edit trucks,
-  add trucks (which makes the tracker token) and manage users. Admins can preview the site as another
-  staff type with **View as** at the top.
+- Staff (Sales, Service, Engineering) see the fleet. On a truck page, **Sales** sees only Location (with the Farber Fleet Connection),
+  the truck details (build/delivery, address, contact, Farber team) and a **View customer page** button.
 - **Customers** are added on the Customers side of the Users page and must be given at least one truck. They are tied to one or more trucks and only see the customer page for those trucks
   (`#customer-19227`). They never see the fleet.
 - **Forgotten password:** an admin presses **Reset sign-in** for that person, which gives a new code.
@@ -61,7 +59,7 @@ repository: the token file lets anyone pretend to be a truck.
 | `#edit`, `#edit-19227` | Edit trucks (admins) |
 | `#new` | Add a truck (admins) |
 | `#users` | Users (admins): **Farber team** (types Sales/Service/Engineering, Viewer/Admin, tabs by type) and **Customers** (their trucks, **+ Add a truck** when they buy another, × to remove one) |
-| `#customer-19227` | The customer's truck page: everything current (right now, maintenance, build/delivery) without their address/contact, the Farber team, IP address, firmware or connection details (Location shows Online or Offline instead). Customers with several trucks switch with a dropdown. Admins open it with **View customer page** |
+| `#customer-19227` | The customer's truck page: everything current (right now, maintenance, build/delivery) without their address/contact, the Farber team, IP address, firmware or connection details (Location shows Online or Offline instead). Customers with several trucks switch with a dropdown. Admins and Sales open it with **View customer page** |
 | `#work-19227`, `#schedule-19227`, `#done-19227` | Service pages (Service users and admins): full history of work, schedule maintenance, add maintenance completed. Placeholders for now; the buttons are in the truck page's Maintenance section |
 | `#mytrucks` | Opens the customer's first truck |
 | `#account` | Change your password |

@@ -367,7 +367,7 @@
         h('div', { class: 'tile' }, h('h3', { text: 'Trucks' }), h('span', { class: 'big', text: num(k.trucks_total) }), h('span', { class: 'sub', text: `${num(k.trucks_online)} online now` })),
         h('a', { class: 'tile', href: '#offline' }, h('h3', { text: 'Trucks offline' }), h('span', { class: 'big' + (k.trucks_offline ? ' bad' : ''), text: num(k.trucks_offline) }), h('span', { class: 'sub', text: 'No report for 10 minutes · open list →' })),
         h('a', { class: 'tile', href: '#shocks' }, h('h3', { text: 'Shocks this week' }), h('span', { class: 'big', text: num(k.shocks_7d) }), h('span', { class: 'sub', text: `${num(k.shocks_24h)} in the last 24 hours · open list →` })),
-        h('div', { class: 'tile' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Temperatures, faults, overdue maintenance' }))),
+        h('div', { class: 'tile' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance' }))),
       h('div', { class: 'toolbar' }, search, count),
       list);
   };

@@ -880,10 +880,11 @@
   // ---------- service pages (placeholders; built later)
   const renderServicePage = async (r, token) => {
     if (!isServiceView()) { location.replace('#truck-' + encodeURIComponent(r.id)); return; }
-    const rows = await rpc('web_truck', { p_truck: r.id });
+    const [rows, work] = await Promise.all([rpc('web_truck', { p_truck: r.id }), r.kind === 'work' ? rpc('web_truck_work', { p_truck: r.id }) : Promise.resolve([])]);
     if (token !== renderToken) return;
     const t = rows[0];
     if (!t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
+    if (r.kind === 'work') return renderWorkHistory(t, work);
     const blurb = {
       work: 'Every repair, service visit and maintenance job done on this truck, newest first.',
       schedule: 'Book upcoming maintenance or a service visit for this truck.',
@@ -897,6 +898,55 @@
       h('div', { class: 'card' },
         h('h2', { text: 'Coming soon' }),
         h('p', { class: 'muted', style: 'margin-top:6px', text: blurb + ' This page is being built.' })));
+  };
+
+  // ---------- maintenance history: every record for one truck
+  const WORK_CATS = [['all', 'All'], ['Maintenance', 'Maintenance'], ['Inspection', 'Inspections'], ['Repair', 'Repairs'],
+    ['Warranty', 'Warranty'], ['Breakdown', 'Breakdowns'], ['Upgrade', 'Upgrades']];
+  const CAT_TONE = { Maintenance: 'ok', Inspection: 'muted', Repair: 'warn', Warranty: 'warn', Breakdown: 'bad', Upgrade: 'accent' };
+  const renderWorkHistory = (t, work) => {
+    let cat = 'all';
+    const search = h('input', { class: 'search', type: 'search', placeholder: 'Search work, notes, shop or place', 'aria-label': 'Search maintenance history' });
+    const count = h('span', { class: 'note' });
+    const tabs = h('div', { class: 'seg tabs-row', role: 'tablist', 'aria-label': 'Filter by type' });
+    const tbody = h('tbody');
+    const n = (k) => work.filter((w) => k === 'all' || w.category === k).length;
+    const draw = () => {
+      tabs.replaceChildren(...WORK_CATS.filter(([k]) => k === 'all' || n(k) > 0).map(([k, l]) =>
+        h('button', { type: 'button', role: 'tab', 'aria-pressed': String(cat === k), onclick: () => { cat = k; draw(); } }, `${l} (${n(k)})`)));
+      const q = clean(search.value).toLowerCase();
+      const rows = work.filter((w) => (cat === 'all' || w.category === cat)
+        && (!q || [w.title, w.notes, w.done_by, w.location, w.category].some((v) => String(v || '').toLowerCase().includes(q))));
+      count.textContent = rows.length === work.length ? `${work.length} records` : `${rows.length} of ${work.length} records`;
+      tbody.replaceChildren(...(rows.length ? rows.map((w) => h('tr', null,
+        h('td', { class: 'first nowrap', 'data-label': 'Date', text: fmtDay(w.done_on) }),
+        h('td', { 'data-label': 'Type' }, h('span', { class: 'pill ' + (CAT_TONE[w.category] || 'muted'), text: w.category })),
+        h('td', { 'data-label': 'Work' }, h('div', { class: 'work-title', text: w.title }), w.notes ? h('div', { class: 'note', text: w.notes }) : null),
+        h('td', { 'data-label': 'Mileage', class: 'nowrap num', text: present(w.odometer_mi) ? num(w.odometer_mi) + ' mi' : '—' }),
+        h('td', { 'data-label': 'Gen hours', class: 'nowrap num', text: present(w.hours) ? num(w.hours, Number.isInteger(w.hours) ? 0 : 1) + ' h' : '—' }),
+        h('td', { 'data-label': 'Done by' }, h('div', { text: w.done_by || '—' }), w.location ? h('div', { class: 'note', text: w.location }) : null)))
+        : [h('tr', null, h('td', { colspan: '6', class: 'muted', text: 'Nothing matches.' }))]));
+    };
+    search.addEventListener('input', draw);
+    draw();
+    const oil = work.filter((w) => w.type_code).length;
+    const fixes = work.filter((w) => w.category === 'Repair' || w.category === 'Warranty').length;
+    const breakdowns = n('Breakdown');
+    const last = work[0];
+    app.replaceChildren(
+      h('a', { class: 'back', href: '#truck-' + encodeURIComponent(t.truck_id), text: '← Back to the truck page' }),
+      h('p', { class: 'eyebrow', text: 'Service' }),
+      h('h1', { class: 'title' }, 'Maintenance history'),
+      h('p', { class: 'lede' }, h('strong', { text: t.truck_id }), t.truck_name ? ' · ' + t.truck_name : '', t.delivery_date ? ` · delivered ${t.delivery_date}` : ''),
+      h('div', { class: 'tiles' },
+        h('div', { class: 'tile' }, h('h3', { text: 'Records' }), h('span', { class: 'big', text: num(work.length) }), h('span', { class: 'sub', text: last ? 'Last: ' + fmtDay(last.done_on) : 'None yet' })),
+        h('div', { class: 'tile' }, h('h3', { text: 'Oil changes' }), h('span', { class: 'big', text: num(oil) }), h('span', { class: 'sub', text: 'Engine and generator' })),
+        h('div', { class: 'tile' }, h('h3', { text: 'Repairs' }), h('span', { class: 'big' + (fixes ? ' warn' : ''), text: num(fixes) }), h('span', { class: 'sub', text: 'Including warranty' })),
+        h('div', { class: 'tile' }, h('h3', { text: 'Breakdowns' }), h('span', { class: 'big' + (breakdowns ? ' bad' : ''), text: num(breakdowns) }), h('span', { class: 'sub', text: 'Roadside and tows' }))),
+      tabs,
+      h('div', { class: 'toolbar' }, search, count),
+      h('div', { class: 'card scroll' }, h('table', { class: 'stack work-table' },
+        h('thead', null, h('tr', null, ['Date', 'Type', 'Work', 'Mileage', 'Gen hours', 'Done by'].map((x) => h('th', { text: x })))), tbody)));
   };
 
   // ---------- customer portal: the customer's own truck, current information only

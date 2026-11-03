@@ -230,3 +230,9 @@ pre.code { margin: 0; padding: 12px; background: var(--bg); border: 1px solid va
 .truck-switch select { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 15px; font-weight: 600; max-width: 100%; }
 .service-actions { margin-bottom: -4px; }
 .warn-row td.warn { font-weight: 600; }
+.pill.accent { color: var(--accent); }
+.nowrap { white-space: nowrap; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.work-table td { vertical-align: top; }
+.work-title { font-weight: 600; }
+@media (min-width: 900px) { .work-table td:nth-child(3) { min-width: 22rem; } }

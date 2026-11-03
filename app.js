@@ -926,10 +926,19 @@
     return { el: h('div', { class: 'picker' }, h('div', { class: 'toolbar' }, search, count), box), value: () => [...chosen] };
   };
 
+  const STAFF_TYPES = Object.fromEntries(Object.entries(TYPES).filter(([k]) => k !== 'customer'));
+
   const renderUsers = async (r, token) => {
     const [users, fleet] = await Promise.all([rpc('web_users'), rpc('web_fleet')]);
     if (token !== renderToken) return;
     const allTrucks = fleet.map((t) => ({ truck_id: t.truck_id, truck_name: t.truck_name }));
+    const truckName = (id) => (allTrucks.find((t) => t.truck_id === id) || {}).truck_name || '';
+    let allUsers = users;
+    let section = (() => { try { return sessionStorage.getItem('ff-users-section') || 'team'; } catch (e) { return 'team'; } })();
+    let teamTab = 'all';
+    let custQuery = '';
+
+    // ---- invite code box (shared)
     const codeBox = h('div', { class: 'notice good', hidden: true });
     const showCode = (res, what) => {
       const site = location.origin + location.pathname;
@@ -949,144 +958,183 @@
       window.scrollTo(0, 0);
     };
 
-    // add form
-    const em = field('Email', { type: 'email', autocomplete: 'off' });
-    const nm = field('Name (optional)', { autocomplete: 'off', maxlength: '80' });
-    const typeSel = h('select', { id: 'new-type' }, h('option', { value: '', text: 'Choose…' }),
-      Object.entries(TYPES).map(([v, l]) => h('option', { value: v, text: l })));
-    const roleSel = h('select', { id: 'new-role' }, h('option', { value: 'viewer', text: 'Viewer (can look)' }), h('option', { value: 'admin', text: 'Admin (can also edit and manage users)' }));
-    const roleField = h('div', { class: 'field' }, h('label', { for: 'new-role', text: 'Access' }), roleSel);
-    let picker = truckPicker(allTrucks, []);
-    const trucksField = h('div', { class: 'field wide', hidden: true }, h('span', { class: 'field-label', text: 'Trucks this customer can see' }), picker.el);
-    typeSel.addEventListener('change', () => {
-      const cust = typeSel.value === 'customer';
-      roleField.hidden = cust;
-      trucksField.hidden = !cust;
-    });
-    const addStatus = h('span', { class: 'status' });
-    const addBtn = h('button', { class: 'btn', type: 'submit', text: 'Add person' });
-    const addForm = h('form', { class: 'card form', novalidate: true },
-      h('h2', { text: 'Add a person' }),
-      h('div', { class: 'grid' }, em.wrap, nm.wrap, h('div', { class: 'field' }, h('label', { for: 'new-type', text: 'User type' }), typeSel), roleField, trucksField),
-      h('div', { class: 'actions' }, addBtn, addStatus));
-    addForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = clean(em.input.value).toLowerCase();
-      if (!EMAIL_OK.test(email)) { addStatus.className = 'status bad'; addStatus.textContent = 'Enter an email address.'; return; }
-      if (!typeSel.value) { addStatus.className = 'status bad'; addStatus.textContent = 'Choose a user type.'; return; }
-      const cust = typeSel.value === 'customer';
-      if (cust && !picker.value().length) { addStatus.className = 'status bad'; addStatus.textContent = 'Pick at least one truck for this customer.'; return; }
-      addBtn.disabled = true; addStatus.className = 'status busy'; addStatus.textContent = 'Adding…';
-      try {
-        const res = await rpc('web_user_add', { p_email: email, p_name: clean(nm.input.value), p_role: cust ? 'viewer' : roleSel.value,
-          p_type: typeSel.value, p_trucks: cust ? picker.value() : [] });
-        await refreshList();
-        showCode(res, 'Added');
-        em.input.value = ''; nm.input.value = ''; typeSel.value = ''; roleSel.value = 'viewer';
-        picker = truckPicker(allTrucks, []); trucksField.replaceChildren(trucksField.firstChild, picker.el);
-        roleField.hidden = false; trucksField.hidden = true;
-        addStatus.textContent = '';
-      } catch (err) { addStatus.className = 'status bad'; addStatus.textContent = friendly(err); }
-      addBtn.disabled = false;
-    });
-
-    const tbody = h('tbody');
     const listStatus = h('p', { class: 'status', 'aria-live': 'polite' });
-    let allUsers = users;
-    let tab = 'all';
-    const tabs = h('div', { class: 'seg tabs-row', role: 'tablist', 'aria-label': 'Filter by user type' });
-    const drawTabs = () => {
-      const n = (k) => allUsers.filter((u) => (k === 'all') || (k === 'none' ? !u.user_type : u.user_type === k)).length;
-      tabs.replaceChildren(...[['all', 'All'], ...Object.entries(TYPES), ['none', 'Not set']].filter(([k]) => k !== 'none' || n('none') > 0)
-        .map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-pressed': String(tab === k), onclick: () => { tab = k; drawTabs(); drawList(allUsers); } }, `${l} (${n(k)})`)));
-    };
-    const typeCell = (u) => {
-      const wrap = h('div', { class: 'type-cell' });
-      const sel = h('select', { 'aria-label': 'User type for ' + u.email },
-        u.user_type ? null : h('option', { value: '', text: 'Not set' }),
-        Object.entries(TYPES).filter(([v]) => v !== 'customer' || (!u.is_me && u.role !== 'admin')).map(([v, l]) => h('option', { value: v, text: l })));
-      sel.value = u.user_type || '';
-      const extra = h('div');
-      const save = async (type, trucks) => {
-        sel.disabled = true; listStatus.className = 'status busy'; listStatus.textContent = 'Saving…';
-        try {
-          await rpc('web_user_set_type', { p_email: u.email, p_type: type, p_trucks: trucks || [] });
-          await refreshList();
-          listStatus.className = 'status ok'; listStatus.textContent = `${u.email} is now ${TYPES[type]}.`;
-        } catch (err) { sel.value = u.user_type || ''; listStatus.className = 'status bad'; listStatus.textContent = friendly(err); }
-        sel.disabled = false;
-      };
-      const openPicker = () => {
-        const pk = truckPicker(allTrucks, u.customer_trucks || []);
-        extra.replaceChildren(pk.el, h('div', { class: 'actions', style: 'margin-top:8px' },
-          h('button', { class: 'btn', type: 'button', text: 'Save trucks', onclick: () => {
-            if (!pk.value().length) { listStatus.className = 'status bad'; listStatus.textContent = 'Pick at least one truck.'; return; }
-            save('customer', pk.value());
-          } }),
-          h('button', { class: 'btn ghost', type: 'button', text: 'Cancel', onclick: () => { sel.value = u.user_type || ''; drawExtra(); } })));
-      };
-      const drawExtra = () => {
-        extra.replaceChildren(u.user_type === 'customer'
-          ? h('div', { class: 'note' }, 'Trucks: ' + ((u.customer_trucks || []).join(', ') || 'none') + ' · ',
-              h('button', { class: 'linkish', type: 'button', text: 'Change', onclick: openPicker }))
-          : '');
-      };
-      sel.addEventListener('change', () => {
-        if (!sel.value) return;
-        if (sel.value === 'customer') openPicker(); else save(sel.value, []);
-      });
-      drawExtra();
-      wrap.append(sel, extra);
-      return wrap;
-    };
-    const drawList = (rows) => {
-      allUsers = rows;
-      drawTabs();
-      rows = rows.filter((u) => tab === 'all' || (tab === 'none' ? !u.user_type : u.user_type === tab));
-      tbody.replaceChildren(...(rows.length ? [] : [h('tr', null, h('td', { colspan: '5', class: 'muted', text: 'Nobody in this group yet.' }))]), ...rows.map((u) => {
-        const sel = h('select', { 'aria-label': 'Access for ' + u.email },
-          h('option', { value: 'viewer', text: 'Viewer' }), h('option', { value: 'admin', text: 'Admin' }));
-        sel.value = u.role;
-        sel.addEventListener('change', async () => {
-          sel.disabled = true; listStatus.className = 'status busy'; listStatus.textContent = 'Saving…';
-          try { await rpc('web_user_set_role', { p_email: u.email, p_role: sel.value }); listStatus.className = 'status ok'; listStatus.textContent = `${u.email} is now ${sel.value === 'admin' ? 'an admin' : 'a viewer'}.`; u.role = sel.value; }
-          catch (err) { sel.value = u.role; listStatus.className = 'status bad'; listStatus.textContent = friendly(err); }
-          sel.disabled = false;
+    const say = (cls, text) => { listStatus.className = 'status ' + cls; listStatus.textContent = text; };
+    const refreshList = async () => { allUsers = await rpc('web_users'); draw(); };
+
+    // shared row pieces
+    const statusCell = (u) => h('td', { 'data-label': 'Status', class: u.status === 'Active' ? 'ok' : 'warn',
+      text: u.status === 'Active' ? 'Active' + (u.last_sign_in_at ? ' · last in ' + fmtDay(u.last_sign_in_at) : '') : u.status === 'Invited' ? `Invited · code works until ${fmtDay(u.invite_expires)}` : 'Code expired' });
+    const personCell = (u) => h('td', { class: 'first', 'data-label': 'Person' }, h('div', { text: u.name || u.email }), u.name ? h('div', { class: 'note', text: u.email }) : null);
+    const actionsCell = (u) => {
+      const armed = {};
+      const twoStep = (key, label, warn, fn) => {
+        const b = h('button', { class: 'btn ' + (key === 'remove' ? 'danger' : 'ghost'), type: 'button', text: label });
+        b.addEventListener('click', async () => {
+          if (!armed[key]) { armed[key] = true; b.textContent = label + ' — press again'; say('bad', warn); return; }
+          b.disabled = true;
+          try { await fn(); } catch (err) { say('bad', friendly(err)); b.disabled = false; }
         });
-        const armed = {};
-        const twoStep = (key, label, warn, fn) => {
-          const b = h('button', { class: 'btn ' + (key === 'remove' ? 'danger' : 'ghost'), type: 'button', text: label });
-          b.addEventListener('click', async () => {
-            if (!armed[key]) { armed[key] = true; b.textContent = label + ' — press again'; listStatus.className = 'status bad'; listStatus.textContent = warn; return; }
-            b.disabled = true;
-            try { await fn(); } catch (err) { listStatus.className = 'status bad'; listStatus.textContent = friendly(err); b.disabled = false; }
-          });
-          return b;
-        };
-        const actions = u.is_me ? h('span', { class: 'note', text: 'This is you' }) : h('div', { class: 'actions' },
-          twoStep('reset', u.status === 'Active' ? 'Reset sign-in' : 'New code',
-            u.status === 'Active' ? `Resetting ends ${u.email}’s current sign-in and makes a new invite code. They set a new password with it.` : `This replaces ${u.email}’s old invite code.`,
-            async () => { const res = await rpc('web_user_reset', { p_email: u.email }); await refreshList(); showCode(res, 'New code for'); }),
-          twoStep('remove', 'Remove', `${u.email} will lose access right away.`,
-            async () => { await rpc('web_user_remove', { p_email: u.email }); await refreshList(); listStatus.className = 'status ok'; listStatus.textContent = `${u.email} removed.`; }));
-        return h('tr', null,
-          h('td', { class: 'first', 'data-label': 'Person' }, h('div', { text: u.name || u.email }), u.name ? h('div', { class: 'note', text: u.email }) : null),
-          h('td', { 'data-label': 'Type' }, typeCell(u)),
-          h('td', { 'data-label': 'Access' }, u.is_me || u.user_type === 'customer' ? h('span', { text: u.role === 'admin' ? 'Admin' : 'Viewer' }) : sel),
-          h('td', { 'data-label': 'Status', class: u.status === 'Active' ? 'ok' : 'warn',
-            text: u.status === 'Active' ? 'Active' + (u.last_sign_in_at ? ' · last in ' + fmtDay(u.last_sign_in_at) : '') : u.status === 'Invited' ? `Invited · code works until ${fmtDay(u.invite_expires)}` : 'Code expired' }),
-          h('td', { 'data-label': 'Actions' }, actions));
-      }));
+        return b;
+      };
+      return h('td', { 'data-label': 'Actions' }, u.is_me ? h('span', { class: 'note', text: 'This is you' }) : h('div', { class: 'actions' },
+        twoStep('reset', u.status === 'Active' ? 'Reset sign-in' : 'New code',
+          u.status === 'Active' ? `Resetting ends ${u.email}’s current sign-in and makes a new invite code. They set a new password with it.` : `This replaces ${u.email}’s old invite code.`,
+          async () => { const res = await rpc('web_user_reset', { p_email: u.email }); await refreshList(); showCode(res, 'New code for'); }),
+        twoStep('remove', 'Remove', `${u.email} will lose access right away.`,
+          async () => { await rpc('web_user_remove', { p_email: u.email }); await refreshList(); say('ok', `${u.email} removed.`); })));
     };
-    const refreshList = async () => { drawList(await rpc('web_users')); };
-    drawList(users);
-    app.replaceChildren(
-      h('h1', { class: 'title', text: 'Users' }),
-      h('p', { class: 'lede', text: 'People who can sign in to Farber Fleet. Staff (Sales, Service, Engineering) see the fleet; viewers look, admins can also edit and add trucks and manage this list. Customers only see the customer page for their own trucks. Adding someone gives you a one-time invite code to pass on.' }),
-      codeBox, addForm,
-      tabs,
-      h('div', { class: 'card scroll' }, h('table', { class: 'stack' },
-        h('thead', null, h('tr', null, ['Person', 'Type', 'Access', 'Status', ''].map((x) => h('th', { text: x })))), tbody), listStatus));
+    const setTrucks = async (u, trucks, msg) => {
+      say('busy', 'Saving…');
+      try { await rpc('web_user_set_type', { p_email: u.email, p_type: 'customer', p_trucks: trucks }); await refreshList(); say('ok', msg); }
+      catch (err) { say('bad', friendly(err)); }
+    };
+
+    // ---- Farber team
+    const teamPanel = () => {
+      const em = field('Email', { type: 'email', autocomplete: 'off' });
+      const nm = field('Name (optional)', { autocomplete: 'off', maxlength: '80' });
+      const typeSel = h('select', { id: 'new-type' }, h('option', { value: '', text: 'Choose…' }),
+        Object.entries(STAFF_TYPES).map(([v, l]) => h('option', { value: v, text: l })));
+      const roleSel = h('select', { id: 'new-role' }, h('option', { value: 'viewer', text: 'Viewer (can look)' }), h('option', { value: 'admin', text: 'Admin (can also edit and manage users)' }));
+      const st = h('span', { class: 'status' });
+      const btn = h('button', { class: 'btn', type: 'submit', text: 'Add team member' });
+      const form = h('form', { class: 'card form', novalidate: true },
+        h('h2', { text: 'Add a Farber team member' }),
+        h('div', { class: 'grid' }, em.wrap, nm.wrap,
+          h('div', { class: 'field' }, h('label', { for: 'new-type', text: 'User type' }), typeSel),
+          h('div', { class: 'field' }, h('label', { for: 'new-role', text: 'Access' }), roleSel)),
+        h('div', { class: 'actions' }, btn, st));
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = clean(em.input.value).toLowerCase();
+        if (!EMAIL_OK.test(email)) { st.className = 'status bad'; st.textContent = 'Enter an email address.'; return; }
+        if (!typeSel.value) { st.className = 'status bad'; st.textContent = 'Choose a user type.'; return; }
+        btn.disabled = true; st.className = 'status busy'; st.textContent = 'Adding…';
+        try {
+          const res = await rpc('web_user_add', { p_email: email, p_name: clean(nm.input.value), p_role: roleSel.value, p_type: typeSel.value, p_trucks: [] });
+          await refreshList(); showCode(res, 'Added');
+        } catch (err) { st.className = 'status bad'; st.textContent = friendly(err); btn.disabled = false; }
+      });
+
+      const team = allUsers.filter((u) => u.user_type !== 'customer');
+      const n = (k) => team.filter((u) => k === 'all' || (k === 'none' ? !u.user_type : u.user_type === k)).length;
+      const tabs = h('div', { class: 'seg tabs-row', role: 'tablist', 'aria-label': 'Filter by user type' },
+        [['all', 'All'], ...Object.entries(STAFF_TYPES), ['none', 'Not set']].filter(([k]) => k !== 'none' || n('none') > 0)
+          .map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-pressed': String(teamTab === k), onclick: () => { teamTab = k; draw(); } }, `${l} (${n(k)})`)));
+      const rows = team.filter((u) => teamTab === 'all' || (teamTab === 'none' ? !u.user_type : u.user_type === teamTab));
+      const tbody = h('tbody', null, rows.length ? rows.map((u) => {
+        const typeSel = h('select', { 'aria-label': 'User type for ' + u.email },
+          u.user_type ? null : h('option', { value: '', text: 'Not set' }),
+          Object.entries(STAFF_TYPES).map(([v, l]) => h('option', { value: v, text: l })));
+        typeSel.value = u.user_type || '';
+        typeSel.addEventListener('change', async () => {
+          if (!typeSel.value) return;
+          typeSel.disabled = true; say('busy', 'Saving…');
+          try { await rpc('web_user_set_type', { p_email: u.email, p_type: typeSel.value, p_trucks: [] }); await refreshList(); say('ok', `${u.email} is now ${TYPES[typeSel.value]}.`); }
+          catch (err) { typeSel.value = u.user_type || ''; typeSel.disabled = false; say('bad', friendly(err)); }
+        });
+        const roleSel = h('select', { 'aria-label': 'Access for ' + u.email }, h('option', { value: 'viewer', text: 'Viewer' }), h('option', { value: 'admin', text: 'Admin' }));
+        roleSel.value = u.role;
+        roleSel.addEventListener('change', async () => {
+          roleSel.disabled = true; say('busy', 'Saving…');
+          try { await rpc('web_user_set_role', { p_email: u.email, p_role: roleSel.value }); u.role = roleSel.value; say('ok', `${u.email} is now ${roleSel.value === 'admin' ? 'an admin' : 'a viewer'}.`); }
+          catch (err) { roleSel.value = u.role; say('bad', friendly(err)); }
+          roleSel.disabled = false;
+        });
+        return h('tr', null, personCell(u),
+          h('td', { 'data-label': 'Type' }, typeSel),
+          h('td', { 'data-label': 'Access' }, u.is_me ? h('span', { text: u.role === 'admin' ? 'Admin' : 'Viewer' }) : roleSel),
+          statusCell(u), actionsCell(u));
+      }) : h('tr', null, h('td', { colspan: '5', class: 'muted', text: 'Nobody in this group yet.' })));
+      return [form, tabs, h('div', { class: 'card scroll' }, h('table', { class: 'stack' },
+        h('thead', null, h('tr', null, ['Person', 'Type', 'Access', 'Status', ''].map((x) => h('th', { text: x })))), tbody), listStatus)];
+    };
+
+    // ---- Customers
+    const customerPanel = () => {
+      const em = field('Email', { type: 'email', autocomplete: 'off' });
+      const nm = field('Name (optional)', { autocomplete: 'off', maxlength: '80' });
+      const picker = truckPicker(allTrucks, []);
+      const st = h('span', { class: 'status' });
+      const btn = h('button', { class: 'btn', type: 'submit', text: 'Add customer' });
+      const form = h('form', { class: 'card form', novalidate: true },
+        h('h2', { text: 'Add a customer' }),
+        h('div', { class: 'grid' }, em.wrap, nm.wrap,
+          h('div', { class: 'field wide' }, h('span', { class: 'field-label', text: 'Their truck (at least one)' }), picker.el)),
+        h('div', { class: 'actions' }, btn, st));
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = clean(em.input.value).toLowerCase();
+        if (!EMAIL_OK.test(email)) { st.className = 'status bad'; st.textContent = 'Enter an email address.'; return; }
+        if (!picker.value().length) { st.className = 'status bad'; st.textContent = 'Pick the customer’s truck.'; return; }
+        btn.disabled = true; st.className = 'status busy'; st.textContent = 'Adding…';
+        try {
+          const res = await rpc('web_user_add', { p_email: email, p_name: clean(nm.input.value), p_role: 'viewer', p_type: 'customer', p_trucks: picker.value() });
+          await refreshList(); showCode(res, 'Added');
+        } catch (err) { st.className = 'status bad'; st.textContent = friendly(err); btn.disabled = false; }
+      });
+
+      const custs = allUsers.filter((u) => u.user_type === 'customer');
+      const search = h('input', { id: 'cust-search', class: 'search', type: 'search', placeholder: 'Find a customer, email or truck', 'aria-label': 'Find a customer', value: custQuery });
+      const tbody = h('tbody');
+      const drawRows = () => {
+        const q = custQuery.toLowerCase();
+        const rows = custs.filter((u) => !q || [u.name, u.email, ...(u.customer_trucks || []), ...(u.customer_trucks || []).map(truckName)].join(' ').toLowerCase().includes(q));
+        tbody.replaceChildren(...(rows.length ? rows.map((u) => {
+          const mine = u.customer_trucks || [];
+          const cell = h('div', { class: 'truck-cell' });
+          const drawCell = () => {
+            cell.replaceChildren(
+              h('div', { class: 'chips' }, mine.map((id) => h('span', { class: 'chip' },
+                h('a', { href: '#customer-' + encodeURIComponent(id), title: 'Open the customer page' }, h('strong', { text: id }), truckName(id) ? ' · ' + truckName(id) : ''),
+                mine.length > 1 ? h('button', { type: 'button', class: 'chip-x', 'aria-label': `Remove truck ${id} from ${u.email}`, title: 'Remove this truck', text: '×', onclick: () =>
+                  setTrucks(u, mine.filter((x) => x !== id), `Truck ${id} removed from ${u.name || u.email}.`) }) : null))),
+              h('button', { class: 'btn small', type: 'button', text: '+ Add a truck', onclick: openAdd }));
+          };
+          const openAdd = () => {
+            const pk = truckPicker(allTrucks.filter((t) => !mine.includes(t.truck_id)), []);
+            cell.replaceChildren(
+              h('div', { class: 'note', text: `Add trucks for ${u.name || u.email}:` }), pk.el,
+              h('div', { class: 'actions' },
+                h('button', { class: 'btn small', type: 'button', text: 'Add', onclick: () => {
+                  const add = pk.value();
+                  if (!add.length) { say('bad', 'Tick the truck they bought.'); return; }
+                  setTrucks(u, [...mine, ...add].sort(), `Added ${add.join(', ')} for ${u.name || u.email}.`);
+                } }),
+                h('button', { class: 'btn small ghost', type: 'button', text: 'Cancel', onclick: drawCell })));
+          };
+          drawCell();
+          return h('tr', null, personCell(u), h('td', { 'data-label': 'Trucks' }, cell), statusCell(u), actionsCell(u));
+        }) : [h('tr', null, h('td', { colspan: '4', class: 'muted', text: custs.length ? 'No customer matches that.' : 'No customers yet.' }))]));
+      };
+      search.addEventListener('input', () => { custQuery = clean(search.value); drawRows(); });
+      drawRows();
+      const unowned = allTrucks.filter((t) => !custs.some((u) => (u.customer_trucks || []).includes(t.truck_id)));
+      return [form,
+        h('div', { class: 'toolbar cust-tools' }, search, h('span', { class: 'note', text: `${custs.length} ${custs.length === 1 ? 'customer' : 'customers'} · ` + (unowned.length ? `${unowned.length} ${unowned.length === 1 ? 'truck' : 'trucks'} with no customer: ${unowned.map((t) => t.truck_id).join(', ')}` : 'every truck has a customer') })),
+        h('div', { class: 'card scroll' }, h('table', { class: 'stack' },
+          h('thead', null, h('tr', null, ['Customer', 'Trucks', 'Status', ''].map((x) => h('th', { text: x })))), tbody), listStatus)];
+    };
+
+    const draw = () => {
+      const nTeam = allUsers.filter((u) => u.user_type !== 'customer').length;
+      const nCust = allUsers.length - nTeam;
+      const switcher = h('div', { class: 'seg section-switch', role: 'tablist', 'aria-label': 'Which list' },
+        [['team', `Farber team (${nTeam})`], ['customers', `Customers (${nCust})`]].map(([k, l]) =>
+          h('button', { type: 'button', role: 'tab', 'aria-pressed': String(section === k), text: l, onclick: () => {
+            section = k; try { sessionStorage.setItem('ff-users-section', k); } catch (e) {}
+            codeBox.hidden = true; say('', ''); draw();
+          } })));
+      app.replaceChildren(
+        h('h1', { class: 'title', text: 'Users' }),
+        h('p', { class: 'lede', text: section === 'team'
+          ? 'Farber staff (Sales, Service, Engineering) see the whole fleet. Viewers look; admins can also edit and add trucks and manage users. Adding someone gives you a one-time invite code to pass on.'
+          : 'Customers only see the customer page for their own trucks. When a customer buys another truck, press + Add a truck on their row.' }),
+        switcher, codeBox,
+        ...(section === 'team' ? teamPanel() : customerPanel()));
+    };
+    draw();
   };
 
   route();

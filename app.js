@@ -141,6 +141,7 @@
       : (me.name || me.email) + (me.user_type ? ' · ' + typeLabel(me.user_type) : '') + (isAdmin() ? ' · admin' : '');
     document.querySelectorAll('.admin-only').forEach((el) => { el.hidden = !isAdmin(); });
     document.querySelectorAll('.staff-only').forEach((el) => { el.hidden = !signedIn || isCustomer(); });
+    document.querySelectorAll('.not-sales').forEach((el) => { if (isSalesView()) el.hidden = true; });
     document.querySelectorAll('.customer-only').forEach((el) => { el.hidden = !signedIn || !isCustomer(); });
     $('view-as').hidden = !(signedIn && realAdmin());
     $('view-as').value = viewAs || '';
@@ -193,6 +194,8 @@
     let r = parse();
     // Customers only get their own trucks' customer pages and their account.
     if (isCustomer() && !['customer', 'account', 'mytrucks'].includes(r.page)) r = { page: 'mytrucks', id: null };
+    // Sales doesn't get the offline, shocks or warnings pages
+    if (isSalesView() && ['offline', 'shocks', 'warnings'].includes(r.page)) r = { page: 'trucks', id: null };
     markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page);
     window.scrollTo(0, 0);
     const adminPages = ['edit', 'new', 'users'];
@@ -381,6 +384,7 @@
     if (token !== renderToken) return;
     const k = kpis[0] || {};
     const warnings = fleet.filter((t) => t.health === 'Warning').length;
+    const sales = isSalesView();
     const search = h('input', { class: 'search', type: 'search', placeholder: 'Search number, name or city', 'aria-label': 'Search trucks' });
     const list = h('div', { class: 'list' });
     const count = h('span', { class: 'note' });
@@ -393,8 +397,8 @@
         h('span', { class: 'row-main' },
           h('span', { class: 'row-name' + (t.truck_name ? '' : ' unnamed'), text: t.truck_name || 'No name set' }),
           h('span', { class: 'row-sub', text: 'Last reported ' + ago(t.minutes_since_seen) + (t.near_city ? ' · near ' + [t.near_city, t.near_state].filter(Boolean).join(', ') : '') }),
-          t.warnings ? h('span', { class: 'why', text: t.warnings }) : null),
-        h('span', { class: 'row-side' }, statusPill(t.status), healthPill(t.health))))
+          t.warnings && !sales ? h('span', { class: 'why', text: t.warnings }) : null),
+        h('span', { class: 'row-side' }, statusPill(t.status), sales ? null : healthPill(t.health))))
         : [h('div', { class: 'empty', text: 'No trucks match that search.' })]));
     };
     search.addEventListener('input', draw);
@@ -403,9 +407,9 @@
       h('h1', { class: 'title', text: 'Fleet' }),
       h('div', { class: 'tiles' },
         h('div', { class: 'tile' }, h('h3', { text: 'Trucks' }), h('span', { class: 'big', text: num(k.trucks_total) }), h('span', { class: 'sub', text: `${num(k.trucks_online)} online now` })),
-        h('a', { class: 'tile', href: '#offline' }, h('h3', { text: 'Trucks offline' }), h('span', { class: 'big' + (k.trucks_offline ? ' bad' : ''), text: num(k.trucks_offline) }), h('span', { class: 'sub', text: 'No report for 10 minutes · open list →' })),
-        h('a', { class: 'tile', href: '#shocks' }, h('h3', { text: 'Shocks this week' }), h('span', { class: 'big', text: num(k.shocks_7d) }), h('span', { class: 'sub', text: `${num(k.shocks_24h)} in the last 24 hours · open list →` })),
-        h('a', { class: 'tile', href: '#warnings' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance · open list →' }))),
+        sales ? null : h('a', { class: 'tile', href: '#offline' }, h('h3', { text: 'Trucks offline' }), h('span', { class: 'big' + (k.trucks_offline ? ' bad' : ''), text: num(k.trucks_offline) }), h('span', { class: 'sub', text: 'No report for 10 minutes · open list →' })),
+        sales ? null : h('a', { class: 'tile', href: '#shocks' }, h('h3', { text: 'Shocks this week' }), h('span', { class: 'big', text: num(k.shocks_7d) }), h('span', { class: 'sub', text: `${num(k.shocks_24h)} in the last 24 hours · open list →` })),
+        sales ? null : h('a', { class: 'tile', href: '#warnings' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance · open list →' }))),
       h('div', { class: 'toolbar' }, search, count),
       list);
   };

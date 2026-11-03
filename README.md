@@ -11,7 +11,8 @@ The fleet dashboard as a normal website, for people without a Claude account. It
   types the code. From then on they sign in with email and password.
 - Every person has a **user type**: Sales, Service, Engineering or Customer (picked when inviting).
 - Staff (Sales, Service, Engineering) see the fleet. On a truck page, **Sales** sees only Location (with the Farber Fleet Connection),
-  the truck details (build/delivery, address, contact, Farber team) and a **View customer page** button.
+  the truck details (build/delivery, address, contact, Farber team) and a **View customer page** button. Sales doesn't get the Trucks offline, Shocks
+  and Warnings pages, and sees no warnings on the fleet list or truck pages.
 - **Customers** are added on the Customers side of the Users page and must be given at least one truck. They are tied to one or more trucks and only see the customer page for those trucks
   (`#customer-19227`). They never see the fleet.
 - **Forgotten password:** an admin presses **Reset sign-in** for that person, which gives a new code.

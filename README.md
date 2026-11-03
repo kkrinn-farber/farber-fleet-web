@@ -10,7 +10,8 @@ The fleet dashboard as a normal website, for people without a Claude account. It
 - The person opens the site, presses **First time here**, enters that email, chooses a password and
   types the code. From then on they sign in with email and password.
 - Every person has a **user type**: Sales, Service, Engineering or Customer (picked when inviting).
-- Staff (Sales, Service, Engineering) see the fleet. **Viewers** look; **Admins** can also edit trucks,
+- Staff (Sales, Service, Engineering) see the fleet. On a truck page, **Sales** sees Location with the Farber Fleet Connection (Online/Offline) instead of the
+  network details (connection, Wi-Fi, IP, firmware) and network warnings. **Viewers** look; **Admins** can also edit trucks,
   add trucks (which makes the tracker token) and manage users. Admins can preview the site as another
   staff type with **View as** at the top.
 - **Customers** are added on the Customers side of the Users page and must be given at least one truck. They are tied to one or more trucks and only see the customer page for those trucks

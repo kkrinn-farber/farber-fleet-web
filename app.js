@@ -68,6 +68,9 @@
   const realAdmin = () => me && me.role === 'admin';
   const isAdmin = () => realAdmin() && !viewAs;
   const isCustomer = () => me && me.user_type === 'customer';
+  // Sales (or an admin viewing as Sales) sees connection status only, no network details
+  const isSalesView = () => !!me && !isAdmin() && (viewAs || me.user_type) === 'sales';
+  const NET_WARNINGS = ['No internet', 'On cellular with power on'];
   const typeLabel = (t) => TYPES[t] || 'Not set';
 
   const showNotice = (title, body, kind) => {
@@ -541,7 +544,11 @@
     const t = trows[0];
     if (!t) { app.replaceChildren(h('a', { class: 'back', href: '#trucks', text: '← All trucks' }), h('div', { class: 'empty', text: `There is no truck ${id}.` })); return; }
 
-    const { nowPanels, maintRows } = nowPanelsFor(t, maint, false);
+    if (isSalesView() && t.warnings) {
+      const w = String(t.warnings).split(', ').filter((x) => !NET_WARNINGS.includes(x)).join(', ');
+      t.warnings = w || null; t.health = w ? 'Warning' : 'Good';
+    }
+    const { nowPanels, maintRows } = nowPanelsFor(t, maint, isSalesView());
 
     const histBox = h('div', { class: 'charts' }, h('p', { class: 'loading', text: 'Loading history…' }));
     const routeBox = h('div', { class: 'card' });

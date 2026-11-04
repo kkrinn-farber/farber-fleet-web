@@ -476,13 +476,32 @@
   // shared by the staff truck page and the customer page (cust = hide IP and firmware)
   const nowPanelsFor = (t, maint, cust) => {
     const needs = (k) => t['has_' + k];
+    // oil changes (and any other due-date items) shown inside the Truck and Generator cards
+    const hrsFmt = (v, d) => num(v, d === undefined ? (Number.isInteger(Number(v)) ? 0 : 1) : d) + ' h';
+    const dueRows = (m) => {
+      const byHours = present(m.interval_hours);
+      let st, cls;
+      if (m.status === 'Overdue') { cls = 'bad'; st = byHours && present(m.hours_left) && m.hours_left <= 0 ? `Overdue by ${hrsFmt(-m.hours_left)}` : `Overdue by ${m.days_overdue} day${m.days_overdue === 1 ? '' : 's'}`; }
+      else if (m.status === 'OK') { cls = 'ok'; st = byHours && present(m.hours_left) ? `OK, ${hrsFmt(m.hours_left)} left` : present(m.days_overdue) ? `OK, due in ${-m.days_overdue} days` : 'OK'; }
+      else { cls = 'warn'; st = m.status === 'No hour reading' ? 'No hour meter reading' : 'No record'; }
+      const label = m.name.replace(/^Generator /, '').replace(/^Engine /, '');
+      const cap = label.charAt(0).toUpperCase() + label.slice(1);
+      return [
+        kv(cap, st, null, cls),
+        kv('Last ' + label, m.last_done ? fmtDay(m.last_done) + (byHours && present(m.last_hours) ? ` at ${hrsFmt(m.last_hours)}` : '') : 'Never'),
+        kv('Next due', [byHours && present(m.next_due_hours) ? `at ${hrsFmt(m.next_due_hours)}` : '', m.next_due ? fmtDay(m.next_due) : ''].filter(Boolean).join(' or ') || null),
+      ];
+    };
+    const genMaint = (maint || []).filter((m) => /^generator/.test(m.code));
+    const truckMaint = (maint || []).filter((m) => !/^generator/.test(m.code) || !needs('generator'));
     const nowPanels = [
       needs('temps') && panel('Temperatures',
         [1, 2, 3, 4, 5, 6].map((i) => kv(t['temp' + i + '_label'] || 'Temp ' + i, num(t['temp' + i + '_f'], 1), '°F'))),
       panel('Truck',
         kv('Engine', t.engine), kv('Speed', num(t.speed_mph), ' mph'), kv('RPM', num(t.rpm)), kv('Mileage', num(t.odometer_mi), ' mi'), kv('Fuel', num(t.fuel_pct), '%'),
         needs('oil') && kv('Oil pressure', num(t.oil_psi), ' psi'), kv('Coolant', num(t.coolant_f), '°F'),
-        kv('Fault codes', present(t.dtc_count) ? t.dtc_count : null, null, t.dtc_count > 0 ? 'bad' : null)),
+        kv('Fault codes', present(t.dtc_count) ? t.dtc_count : null, null, t.dtc_count > 0 ? 'bad' : null),
+        truckMaint.flatMap(dueRows)),
       panel('Batteries',
         kv('Chassis', num(t.chassis_v, 1), ' V', tone('chassis_v', t.chassis_v)),
         needs('aux') && kv('Aux', num(t.aux_v, 1), ' V', tone('aux_v', t.aux_v)),
@@ -490,7 +509,8 @@
         kv('Tracker battery', num(t.board_v, 2), ' V', tone('board_v', t.board_v))),
       needs('generator') && panel('Generator',
         kv('Generator', t.generator, null, t.generator === 'Error' ? 'bad' : null), kv('Error code', t.gen_error_code),
-        kv('Hour meter', num(t.gen_hours, 1), ' h'), kv('Generator battery', num(t.gen_battery_v, 1), ' V')),
+        kv('Hour meter', num(t.gen_hours, 1), ' h'), kv('Generator battery', num(t.gen_battery_v, 1), ' V'),
+        genMaint.flatMap(dueRows)),
       needs('shore') && panel('Shore power', kv('Shore power', t.shore), kv('Draw', num(t.shore_amps, 1), ' A')),
       needs('solar') && panel('Solar', kv('Output', num(t.solar_w), ' W')),
       needs('plumbing') && panel('Water', kv('Fresh', num(t.fresh_pct), '%'), kv('Gray', num(t.gray_pct), '%'), kv('Black', num(t.black_pct), '%'), kv('Pump', t.pump)),
@@ -506,27 +526,8 @@
         cust ? null : kv('Firmware', t.fw)),
     ].filter(Boolean);
 
-    const hrsFmt = (v, d) => num(v, d === undefined ? (Number.isInteger(Number(v)) ? 0 : 1) : d) + ' h';
-    const maintRows = maint.map((m) => {
-      const byHours = present(m.interval_hours);
-      const every = [byHours ? `${num(m.interval_hours)} hours` : '', present(m.interval_days) ? (m.interval_days % 365 === 0 ? `${m.interval_days / 365 * 12} months` : m.interval_days >= 28 ? `${Math.round(m.interval_days / 30.4)} months` : `${m.interval_days} days`) : ''].filter(Boolean).join(' or ');
-      let st, cls;
-      if (m.status === 'Overdue') { cls = 'bad'; st = byHours && present(m.hours_left) && m.hours_left <= 0 ? `Overdue by ${hrsFmt(-m.hours_left)}` : `Overdue by ${m.days_overdue} day${m.days_overdue === 1 ? '' : 's'}`; }
-      else if (m.status === 'OK') { cls = 'ok'; st = byHours && present(m.hours_left) ? `OK, ${hrsFmt(m.hours_left)} left` : present(m.days_overdue) ? `OK, due in ${-m.days_overdue} days` : 'OK'; }
-      else { cls = 'warn'; st = m.status === 'No hour reading' ? 'No hour meter reading' : 'No record'; }
-      return h('tr', null,
-        h('td', { class: 'first', 'data-label': 'Item', text: m.name }),
-        h('td', { 'data-label': 'Last done', text: m.last_done ? fmtDay(m.last_done) + (byHours && present(m.last_hours) ? ` at ${hrsFmt(m.last_hours)}` : '') : 'Never' }),
-        h('td', { 'data-label': 'Due every', text: every }),
-        h('td', { 'data-label': 'Next due', text: [byHours && present(m.next_due_hours) ? `at ${hrsFmt(m.next_due_hours)}` : '', m.next_due ? fmtDay(m.next_due) : ''].filter(Boolean).join(' or ') || '—' }),
-        h('td', { 'data-label': 'Status', class: cls, text: st }));
-    });
-    return { nowPanels, maintRows };
+    return { nowPanels };
   };
-  const maintTable = (maintRows) => h('div', { class: 'card scroll' }, maintRows.length ? h('table', { class: 'stack' },
-    h('thead', null, h('tr', null, ['Item', 'Last done', 'Due every', 'Next due', 'Status'].map((x) => h('th', { text: x })))),
-    h('tbody', null, maintRows)) : h('p', { class: 'muted', text: 'No maintenance items.' }));
-
   const renderTruck = async (r, token) => {
     const id = r.id;
     const [trows, maint, events, reqs] = await Promise.all([rpc('web_truck', { p_truck: id }), rpc('web_truck_maint', { p_truck: id }), rpc('web_truck_events', { p_truck: id }),
@@ -539,7 +540,7 @@
       const w = String(t.warnings).split(', ').filter((x) => !NET_WARNINGS.includes(x)).join(', ');
       t.warnings = w || null; t.health = w ? 'Warning' : 'Good';
     }
-    const { nowPanels, maintRows } = nowPanelsFor(t, maint, isSalesView());
+    const { nowPanels } = nowPanelsFor(t, maint, isSalesView());
 
     const histBox = h('div', { class: 'charts' }, h('p', { class: 'loading', text: 'Loading history…' }));
     const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Time window' }, [[6, '6 hours'], [24, '24 hours'], [72, '3 days'], [168, '7 days']].map(([v, label]) =>
@@ -616,10 +617,9 @@
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' },
         ...detailPanels),
-      h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Overdue items turn the truck to Warning. Generator oil goes by the hour meter.' })),
+      isServiceView() ? h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Oil changes are in the Truck and Generator cards under Right now.' })) : null,
       isServiceView() ? h('div', { class: 'actions service-actions' }, Object.entries(SERVICE_PAGES).map(([k, label]) =>
         h('a', { class: 'btn', href: '#' + k + '-' + encodeURIComponent(t.truck_id), text: label }))) : null,
-      maintTable(maintRows),
       reqs ? h('div', { class: 'section-head' }, h('h2', { text: 'Service requests' }), h('a', { class: 'note', href: '#requests', text: 'All service requests →' })) : null,
       reqs ? truckRequestsCard(reqs, false) : null,
       h('div', { class: 'section-head' }, h('h2', { text: 'Events' }), h('p', { class: 'note', text: 'Last 30 days, with when and where each warning started' })),
@@ -1054,7 +1054,7 @@
     }
     if (token !== renderToken) return;
     if (!t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
-    const { nowPanels, maintRows } = nowPanelsFor(t, maint, true);
+    const { nowPanels } = nowPanelsFor(t, maint, true);
     // more than one truck: a dropdown to switch
     let picker = null;
     if (mine.length > 1) {
@@ -1076,8 +1076,6 @@
       h('div', { class: 'panels' }, panel('Build and delivery', kv('Build date', t.build_date), kv('Delivery date', t.delivery_date), kv('In service', t.in_service))),
       h('div', { class: 'section-head' }, h('h2', { text: 'Service requests' }), h('p', { class: 'note', text: 'Open requests first' })),
       truckRequestsCard(reqs, true),
-      h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' })),
-      maintTable(maintRows),
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report from your truck.' })),
       h('div', { class: 'panels' }, nowPanels),
     ].filter(Boolean));

@@ -53,7 +53,7 @@ repository: the token file lets anyone pretend to be a truck.
 | Address | Page |
 |---|---|
 | `#trucks` | All trucks, with tiles for offline trucks, shocks and warnings |
-| `#truck-19227` | One truck: truck details (address, contact, Farber team), maintenance, events, right now, history charts |
+| `#truck-19227` | One truck: truck details (address, contact, Farber team), maintenance buttons (Service), service requests, events, right now (oil changes are in the Truck and Generator cards), history charts |
 | `#offline` | Trucks offline, with batteries, last location and map links |
 | `#shocks` | Shocks this week, with speed, severity, city/state and map links |
 | `#warnings` | Trucks with warnings: every warning per truck, status and last update |

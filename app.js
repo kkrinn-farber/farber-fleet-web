@@ -72,7 +72,7 @@
   const isCustomer = () => me && me.user_type === 'customer';
   // Sales (or an admin viewing as Sales) sees connection status only, no network details
   const isSalesView = () => !!me && !isAdmin() && (viewAs || me.user_type) === 'sales';
-  const NET_WARNINGS = ['No internet', 'On cellular with power on'];
+  const NET_WARNINGS = ['No internet', 'On cellular with power on', 'Unusual upload volume', 'Tracker code refused'];
   // Service (or an admin) gets the work-history / maintenance buttons
   const isServiceView = () => !!me && (isAdmin() || (viewAs || me.user_type) === 'service');
   // Service, Sales and admins read tickets, warnings and shocks; only Service and admins change tickets
@@ -587,7 +587,7 @@
     if (w === 'Generator 2') return g[1] ? 'Generator: ' + g[1] : '';
     if (['Check engine', 'Fault codes', 'Engine oil change overdue'].includes(w)) return 'Truck engine';
     if (w === 'Jacks') return 'Jacks';
-    if (['Not reporting', 'No internet', 'On cellular with power on', 'Tracker asleep (low battery)'].includes(w)) return 'Networking';
+    if (['Not reporting', 'No internet', 'On cellular with power on', 'Tracker asleep (low battery)', 'Unusual upload volume', 'Tracker code refused'].includes(w)) return 'Networking';
     return '';
   };
   const systemsPanel = (sy) => sy ? panel('Systems',
@@ -683,10 +683,67 @@
 
     return { nowPanels };
   };
+  // ---------- the truck's tracker: hotspot (to read to a customer) and setup codes
+  const copyTo = async (text, el, statusEl) => {
+    try { await navigator.clipboard.writeText(text); statusEl.textContent = 'Copied'; }
+    catch (e) { const rg = document.createRange(); rg.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(rg); statusEl.textContent = 'Selected: press Ctrl+C'; }
+    setTimeout(() => { statusEl.textContent = ''; }, 2500);
+  };
+  const b64url = (str) => btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const setupBox = h('div', { class: 'notice good setup-code', hidden: true });
+  const showSetupCode = (t, res) => {
+    // server + truck + code in one string; the tracker's setup page takes it as is
+    const code = 'FF1-' + b64url(JSON.stringify({ u: CFG.supabaseUrl, k: CFG.supabaseKey, t: res.truck_id, c: res.token }));
+    const hs = res.hotspot || {};
+    const msg = [
+      `Farber Fleet setup code for truck ${res.truck_id}:`, '', code, '',
+      'Copy the code first (the tracker’s hotspot has no internet). Then:',
+      `1. On your phone, join the Wi-Fi network ${hs.ap_name || 'FarberFleet-…'}${hs.ap_pass ? ` (password: ${hs.ap_pass})` : ' (the password is on the tracker’s sticker)'}.`,
+      '   If the network isn’t there, hold the tracker’s BOOT button for 2 seconds.',
+      '2. The setup page opens by itself (or go to http://192.168.4.1).',
+      '3. Paste the code under "Setup code from Farber" and press "Use this code".',
+    ].join('\n');
+    const codeEl = h('code', { class: 'copy-val mono', text: code });
+    const pre = h('pre', { class: 'code', text: msg });
+    const st1 = h('span', { class: 'status ok' }), st2 = h('span', { class: 'status ok' });
+    setupBox.hidden = false;
+    setupBox.replaceChildren(
+      h('strong', { text: `Setup code for truck ${res.truck_id}` }),
+      h('p', { class: 'note', text: 'Send it to the customer. The tracker’s current code keeps working until this one is used; then the old one stops. Making another code cancels this one.' }),
+      h('div', { class: 'copy-row' }, h('span', { class: 'copy-label', text: 'Code' }), codeEl,
+        h('button', { class: 'btn small ghost', type: 'button', text: 'Copy', onclick: () => copyTo(code, codeEl, st1) }), st1),
+      h('details', { class: 'copy-msg', open: true }, h('summary', { text: 'Message for the customer' }), pre),
+      h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', text: 'Copy message', onclick: () => copyTo(msg, pre, st2) }), st2));
+    setupBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  const trackerPanel = (t, hs) => {
+    const passEl = h('b', { class: 'mono', text: hs && hs.ap_pass ? '••••••••' : '—' });
+    let shown = false;
+    const showBtn = hs && hs.ap_pass ? h('button', { type: 'button', class: 'link-btn', text: 'Show', onclick: () => {
+      shown = !shown; passEl.textContent = shown ? hs.ap_pass : '••••••••'; showBtn.textContent = shown ? 'Hide' : 'Show'; } }) : null;
+    const st = h('span', { class: 'status' });
+    let armed = false;
+    const codeBtn = isAdmin() ? h('button', { class: 'btn small ghost', type: 'button', text: 'Make a setup code', onclick: async () => {
+      if (!armed) { armed = true; codeBtn.textContent = 'Make a setup code — press again'; st.className = 'status'; st.textContent = 'For a customer to type on the tracker (new truck code, or after a server move).'; return; }
+      codeBtn.disabled = true;
+      try { showSetupCode(t, await rpc('web_tracker_setup_code', { p_truck: t.truck_id })); st.textContent = ''; }
+      catch (err) { st.className = 'status bad'; st.textContent = friendly(err); }
+      codeBtn.disabled = false; armed = false; codeBtn.textContent = 'Make a setup code';
+    } }) : null;
+    return h('div', { class: 'card panel' }, h('h3', { text: 'Tracker' }),
+      kv('Board', hs ? hs.device_id : 'No tracker yet'),
+      kv('Hotspot name', hs && hs.ap_name),
+      h('div', { class: 'kv' }, h('span', { text: 'Hotspot password' }), h('span', { class: 'kv-val' }, passEl, showBtn ? ' ' : null, showBtn)),
+      h('p', { class: 'note', text: 'Read these to a customer who lost the sticker. Only Farber Service and admins see them.' }),
+      codeBtn ? h('div', { class: 'actions' }, codeBtn, st) : null);
+  };
+
   const renderTruck = async (r, token) => {
     const id = r.id;
-    const [trows, maint, events, reqs] = await Promise.all([rpc('web_truck', { p_truck: id }), rpc('web_truck_maint', { p_truck: id }), rpc('web_truck_events', { p_truck: id }),
-      canSeeTickets() ? rpc('web_truck_requests', { p_truck: id }) : Promise.resolve(null)]);
+    setupBox.hidden = true;
+    const [trows, maint, events, reqs, hotspot] = await Promise.all([rpc('web_truck', { p_truck: id }), rpc('web_truck_maint', { p_truck: id }), rpc('web_truck_events', { p_truck: id }),
+      canSeeTickets() ? rpc('web_truck_requests', { p_truck: id }) : Promise.resolve(null),
+      isServiceView() ? rpc('web_truck_hotspot', { p_truck: id }).catch(() => null) : Promise.resolve(undefined)]);
     if (token !== renderToken) return;
     const t = trows[0];
     if (!t) { app.replaceChildren(h('a', { class: 'back', href: '#trucks', text: '← All trucks' }), h('div', { class: 'empty', text: `There is no truck ${id}.` })); return; }
@@ -753,7 +810,7 @@
         panel('Contact', kv('Name', t.contact_name), kv('Title', t.contact_title),
           h('div', { class: 'kv' }, h('span', { text: 'Phone' }), t.contact_phone ? h('a', { href: 'tel:' + String(t.contact_phone).replace(/[^0-9+]/g, ''), text: t.contact_phone }) : h('b', { text: '—' })),
           h('div', { class: 'kv' }, h('span', { text: 'Email' }), t.contact_email ? h('a', { href: 'mailto:' + t.contact_email, text: t.contact_email }) : h('b', { text: '—' }))),
-        panel('Farber team', team), systemsPanel(sysOf(t))].filter(Boolean);
+        panel('Farber team', team), systemsPanel(sysOf(t)), hotspot !== undefined ? trackerPanel(t, hotspot) : null].filter(Boolean);
     const customerBtn = h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' });
     // No tracker yet (new truck) or one assigned that hasn't sent anything yet
     const trackerNote = t.status === 'No tracker'
@@ -788,6 +845,7 @@
         isAdmin() ? h('a', { class: 'btn ghost small', href: '#trackersettings-' + encodeURIComponent(t.truck_id), text: 'Tracker settings' }) : null),
       trackerNote,
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
+      setupBox,
       h('div', { class: 'panels' },
         ...detailPanels),
       isServiceView() ? h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Oil changes are in the Truck and Generator cards under Right now.' })) : null,
@@ -815,6 +873,8 @@
     'Tracker asleep (low battery)': ['Tracker backup battery low (tracker asleep)', 'Repair'],
     'Generator 2': ['Second generator fault', 'Repair'], Slideout: ['Slideout fault', 'Repair'], Awning: ['Awning fault', 'Repair'],
     'Slideout out while moving': ['Slideout was out while driving', 'Inspection'], 'Awning out while moving': ['Awning was out while driving', 'Inspection'],
+    'Unusual upload volume': ['Tracker sending far too much data (faulty or stolen tracker?)', 'Repair'],
+    'Tracker code refused': ['Uploads with a wrong truck code (old or stolen tracker?)', 'Repair'],
   };
   const OVERDUE_TYPE = { 'Engine oil change overdue': 'engine_oil', 'Generator oil change overdue': 'generator_oil' };
   const warningPreset = (w) => {
@@ -1012,7 +1072,13 @@
       { k: 'apn', label: 'Cellular APN', text: true, hint: 'From the SIM provider. Empty = network default.' },
       { k: 'prefer_lte', label: 'Use cellular even when Wi-Fi works', bool: ['No', 'Yes'] },
       { k: 'obd', label: 'Read the truck’s OBD-II port', bool: ['Off', 'On'], hint: 'Turn on once a CAN transceiver is wired in.' },
-      { k: 'ap_password', label: 'Setup hotspot password', text: true, pw: true, hint: '8 to 63 characters. Used to join the tracker’s own hotspot.' }]]];
+      { k: 'ap_password', label: 'New setup hotspot password', text: true, pw: true, truckOnly: true,
+        hint: 'Leave empty to keep the password on the tracker’s sticker. 8 to 63 characters; the tracker switches on its next send.' }]],
+    ['Server (advanced)', [
+      { k: 'server_url', label: 'Server address', text: true, fleetOnly: true, wide: true,
+        hint: 'Only to move every tracker to a new database. Trackers try it and go back to the current one if it doesn’t work.' },
+      { k: 'server_key', label: 'Server publishable key', text: true, fleetOnly: true, wide: true,
+        hint: 'The publishable (public) key of the new server. Never a secret key.' }]]];
   const toUi = (f, v) => (!present(v) ? '' : f.bool ? String(v) : f.text ? String(v) : String(+(Number(v) / f.mul).toFixed(f.uiDigits ?? 1)));
   const toDb = (f, s) => {
     if (f.bool) return s === '' ? null : s === 'true';
@@ -1040,8 +1106,8 @@
         input.value = present(mine[f.k]) ? String(mine[f.k]) : (truck ? '' : 'false');
       } else {
         input = h('input', { id, type: f.text ? (f.pw ? 'password' : 'text') : 'number', step: 'any', inputmode: f.text ? null : 'decimal',
-          autocomplete: 'off', maxlength: f.text ? '63' : null,
-          placeholder: truck ? (present(fleet[f.k]) && fleet[f.k] !== '' ? 'Fleet: ' + fleetUi : 'Fleet setting') : '' });
+          autocomplete: 'off', maxlength: f.text ? (f.k === 'server_key' ? '400' : f.k === 'server_url' ? '120' : '63') : null,
+          placeholder: f.truckOnly ? 'Keep the password on the sticker' : f.k === 'server_url' ? 'https://xxxx.supabase.co' : truck ? (present(fleet[f.k]) && fleet[f.k] !== '' ? 'Fleet: ' + fleetUi : 'Fleet setting') : '' });
         input.value = toUi(f, mine[f.k]);
       }
       inputs[f.k] = input;
@@ -1050,7 +1116,7 @@
         const t = h('button', { type: 'button', class: 'pw-toggle', text: 'Show', onclick: () => { const s = input.type === 'password'; input.type = s ? 'text' : 'password'; t.textContent = s ? 'Hide' : 'Show'; } });
         box = h('div', { class: 'pw-wrap' }, input, t);
       }
-      return h('div', { class: 'field' }, h('label', { for: id, text: f.label + (f.unit ? ` (${f.unit})` : '') }), box,
+      return h('div', { class: 'field' + (f.wide ? ' wide' : '') }, h('label', { for: id, text: f.label + (f.unit ? ` (${f.unit})` : '') }), box,
         f.hint ? h('p', { class: 'note', text: f.hint }) : null);
     };
 
@@ -1072,7 +1138,8 @@
     const collect = () => {
       const out = {};
       for (const [, fields] of TS_GROUPS) for (const f of fields) {
-        const v = inputs[f.k].value;
+        if (!inputs[f.k]) continue;
+        const v = inputs[f.k].value.trim();
         if (f.text) { if (v !== '' || (!truck && f.k === 'apn')) out[f.k] = v; continue; }
         if (v === '') continue;
         out[f.k] = toDb(f, v);
@@ -1084,9 +1151,15 @@
     const problems = () => {
       const p = [];
       for (const [, fields] of TS_GROUPS) for (const f of fields) {
-        const v = inputs[f.k].value;
+        if (!inputs[f.k]) continue;
+        const v = inputs[f.k].value.trim();
         if (f.bool || v === '') { if (!truck && v === '' && !f.text && !f.bool) p.push(`${f.label}: needs a value.`); continue; }
-        if (f.text) { if (f.pw && (v.length < 8 || v.length > 63)) p.push('Setup hotspot password must be 8 to 63 characters.'); continue; }
+        if (f.text) {
+          if (f.pw && (v.length < 8 || v.length > 63)) p.push('Setup hotspot password must be 8 to 63 characters.');
+          if (f.k === 'server_url' && !/^https:\/\/[A-Za-z0-9.-]+(:\d{2,5})?\/?$/.test(v)) p.push('Server address must look like https://xxxx.supabase.co');
+          if (f.k === 'server_key' && /^sb_secret_|service_role/i.test(v)) p.push('That is a secret key. Use the publishable key; secret keys must never go on a tracker.');
+          continue;
+        }
         const db = toDb(f, v);
         if (!Number.isFinite(db) || db < f.lo || db > f.hi) { const [a, b] = uiRange(f); p.push(`${f.label} must be between ${a} and ${b} ${f.unit}.`); }
       }
@@ -1125,7 +1198,10 @@
         h('p', { class: 'note', style: 'margin-bottom:8px', text: truck ? 'Usually the truck’s own Wi-Fi. Up to 5.'
           : 'Up to 5. FarberGuest (open) is the starting network. Networks typed on a tracker’s setup page are kept on that tracker too.' }),
         wifiRows, addBtn),
-      TS_GROUPS.map(([name, fields]) => h('fieldset', null, h('legend', { text: name }), h('div', { class: 'grid' }, fields.map(fieldFor)))),
+      TS_GROUPS.map(([name, fields]) => {
+        const shown = fields.filter((f) => !(f.truckOnly && !truck) && !(f.fleetOnly && truck));
+        return shown.length ? h('fieldset', null, h('legend', { text: name }), h('div', { class: 'grid' }, shown.map(fieldFor))) : null;
+      }),
       h('div', { class: 'actions sticky' }, save, undo, status));
     start = snap();
     refresh();

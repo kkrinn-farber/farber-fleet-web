@@ -359,3 +359,8 @@ fieldset > .note { margin: -2px 0 10px; }
 .with-unit[hidden] { display: none; }
 .unit-tag { color: var(--muted); font-size: .9rem; }
 .sys-group input[type=number] { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+/* Tracker card + setup code */
+.kv-val { display: inline-flex; align-items: baseline; gap: 6px; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: .85rem; text-decoration: underline; }
+.setup-code { margin-bottom: 14px; }
+.setup-code .copy-val { overflow-wrap: anywhere; word-break: break-all; }

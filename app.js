@@ -1204,23 +1204,24 @@
       sel.addEventListener('change', draw);
       draw();
       return { get: () => [...boxes.children].map((inp, i) => clean(inp.value) || `${unit} ${i + 1}`),
-        wrap: h('div', { class: 'field wide' }, h('label', { for: id, text: label }), h('div', { class: 'count-names' }, sel, boxes)) };
+        wrap: h('div', { class: 'sys-group' }, h('div', { class: 'sys-count' }, h('label', { class: 'sys-head', for: id, text: label }), sel), boxes) };
     };
-    const sysSlides = named('Slideouts (how many, and their names)', 'Slideout', 6, sys0.slideouts);
-    const sysGens = named('Generators (how many, and their names)', 'Generator', 2, sys0.generators);
-    const sysAwnings = named('Awnings (how many, and their names)', 'Awning', 6, sys0.awnings);
+    const sysSlides = named('Slideouts', 'Slideout', 6, sys0.slideouts);
+    const sysGens = named('Generators', 'Generator', 2, sys0.generators);
+    const sysAwnings = named('Awnings', 'Awning', 6, sys0.awnings);
     const sysGet = () => ({ engine: sysEngine.box.checked,
       plumbing: Object.fromEntries(Object.entries(sysTank).map(([k, c]) => [k, c.box.checked])),
       jacks: sysJacks.box.checked, solar: sysSolar.box.checked, shore_amps: Number(shoreSel.value),
       slideouts: sysSlides.get(), generators: sysGens.get(), awnings: sysAwnings.get() });
     const systemsSet = h('fieldset', null, h('legend', { text: 'Systems' }),
       h('p', { class: 'note', style: 'margin-bottom:8px', text: 'What this truck has. It decides what the website shows and what the truck’s tracker reads and sends.' }),
-      h('div', { class: 'grid' },
-        h('div', { class: 'field' }, h('span', { class: 'label', text: 'Vehicle' }), sysEngine.wrap),
-        h('div', { class: 'field' }, h('span', { class: 'label', text: 'Plumbing' }), h('div', { class: 'checks' }, Object.values(sysTank).map((c) => c.wrap))),
-        h('div', { class: 'field' }, h('span', { class: 'label', text: 'Equipment' }), h('div', { class: 'checks' }, sysJacks.wrap, sysSolar.wrap)),
-        h('div', { class: 'field' }, h('label', { for: 's-shore', text: 'Shore power' }), shoreSel),
-        sysSlides.wrap, sysGens.wrap, sysAwnings.wrap));
+      h('div', { class: 'sys-row' },
+        h('div', { class: 'sys-group' }, h('span', { class: 'sys-head', text: 'Vehicle' }), sysEngine.wrap),
+        h('div', { class: 'sys-group' }, h('span', { class: 'sys-head', text: 'Plumbing' }), h('div', { class: 'checks' }, Object.values(sysTank).map((c) => c.wrap))),
+        h('div', { class: 'sys-group' }, h('span', { class: 'sys-head', text: 'Equipment' }), h('div', { class: 'checks' }, sysJacks.wrap, sysSolar.wrap)),
+        h('div', { class: 'sys-group' }, h('label', { class: 'sys-head', for: 's-shore', text: 'Shore power' }), shoreSel)),
+      h('p', { class: 'note sys-sub', text: 'Pick how many, then name each one (the names show on the truck page).' }),
+      h('div', { class: 'sys-row' }, sysSlides.wrap, sysGens.wrap, sysAwnings.wrap));
 
     const nums = data.trucks.map((x) => Number(x.truck_id)).filter((n) => Number.isInteger(n) && n > 0);
     const idField = isNew ? field('Truck number', { autocomplete: 'off', inputmode: 'numeric', maxlength: '32' }) : null;

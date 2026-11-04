@@ -175,7 +175,7 @@ legend { font-weight: 600; font-size: 1.05rem; padding: 0 6px; margin-left: -6px
 .field { display: grid; gap: 4px; min-width: 0; }
 .field.wide { grid-column: 1 / -1; }
 .field label { font-size: 13px; color: var(--muted); }
-.field input, .field select { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.field input, .field select, .sys-group input[type=text], .sys-group select { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .field input[aria-invalid="true"] { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 .actions.sticky { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; border-top: 1px solid var(--line); z-index: 5; }
@@ -341,9 +341,16 @@ fieldset > .note { margin: -2px 0 10px; }
 .note.warn, td .warn { color: var(--warn, #a15c00); }
 
 /* Truck systems (Add / Edit truck) */
-.check { display: flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; margin: 4px 0; }
+.sys-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 18px 28px; align-items: start; }
+.sys-group { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.sys-head { font-size: .85rem; font-weight: 600; color: var(--muted); margin: 0; }
+.sys-group select { width: 100%; height: auto; }
+.sys-count { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sys-count select { width: 5rem; flex: none; padding: 6px 8px; }
+.sys-sub { margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.check { display: flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; margin: 0; min-height: 28px; }
 .check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); flex: none; }
+.check .note { font-size: .8rem; }
 .checks { display: grid; gap: 2px; }
-.field .label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
-.count-names { display: grid; grid-template-columns: 5rem 1fr; gap: 8px; align-items: start; }
-.name-boxes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr)); gap: 8px; }
+.name-boxes { display: grid; gap: 6px; }
+.name-boxes:empty { display: none; }

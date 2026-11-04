@@ -1299,6 +1299,8 @@
 
   // ---------- customer: request service (creates a ticket with the few fields a customer fills in)
   const renderRequestForm = async (r, token) => {
+    // only the truck's customer sends requests; Sales doesn't get the form
+    if (isSalesView()) { location.replace('#customer-' + encodeURIComponent(r.id)); return; }
     let t;
     try { t = await rpc('web_customer_truck', { p_truck: r.id }); }
     catch (err) { if (/Not allowed/i.test(err.message || '')) { location.replace(isCustomer() ? '#mytrucks' : '#trucks'); return; } throw err; }
@@ -1473,7 +1475,7 @@
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' }, panel('Build and delivery', kv('Build date', t.build_date), kv('Delivery date', t.delivery_date), kv('In service', t.in_service))),
       h('div', { class: 'section-head' }, h('h2', { text: 'Service requests' }), h('p', { class: 'note', text: 'Open requests first' })),
-      h('div', { class: 'actions' }, h('a', { class: 'btn', href: '#request-' + encodeURIComponent(t.truck_id), text: 'Request service' })),
+      isSalesView() ? null : h('div', { class: 'actions' }, h('a', { class: 'btn', href: '#request-' + encodeURIComponent(t.truck_id), text: 'Request service' })),
       truckRequestsCard(reqs, true),
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report from your truck.' })),
       h('div', { class: 'panels' }, nowPanels),

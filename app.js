@@ -184,8 +184,9 @@
     if ((m = /^(work|schedule|done)-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'service', kind: m[1], id: m[2] };
     if ((m = /^request-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'request', id: m[1] };
     if ((m = /^ticket-(\d{1,9})$/.exec(raw))) return { page: 'ticket', id: m[1] };
+    if ((m = /^trackersettings-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'trackersettings', id: m[1] };
     if ((m = /^warnticket-([A-Za-z0-9_-]{1,32})\/(.{1,120})$/.exec(raw))) return { page: 'warnticket', id: m[1], warn: m[2] };
-    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks', 'requests', 'newticket'].includes(raw)) return { page: raw, id: null };
+    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks', 'requests', 'newticket', 'trackers', 'trackersettings'].includes(raw)) return { page: raw, id: null };
     return { page: 'trucks', id: null };
   };
   const go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
@@ -214,9 +215,9 @@
     if ((r.page === 'requests' && !canSeeTickets()) || ((r.page === 'newticket' || r.page === 'warnticket') && !isServiceView())) r = { page: 'trucks', id: null };
     // Sales doesn't get the offline, shocks or warnings pages
     if (isSalesView() && r.page === 'offline') r = { page: 'trucks', id: null };
-    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page === 'warnticket' ? 'warnings' : r.page);
+    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page === 'warnticket' ? 'warnings' : r.page === 'trackersettings' ? 'trackers' : r.page);
     window.scrollTo(0, 0);
-    const adminPages = ['edit', 'new', 'users'];
+    const adminPages = ['edit', 'new', 'users', 'trackers', 'trackersettings'];
     if (adminPages.includes(r.page) && !isAdmin()) {
       app.replaceChildren(h('div', { class: 'empty', text: 'Only Farber Fleet admins can open this page.' }));
       return;
@@ -225,7 +226,8 @@
       edit: r.id ? renderEditor : renderEditList, new: renderEditor, users: renderUsers, account: renderAccount,
       customer: renderCustomer, mytrucks: renderMyTrucks, service: renderServicePage, requests: renderRequests, request: renderRequestForm,
       ticket: renderTicket, newticket: (rr, tk) => renderNewTicket(rr, tk, { heading: 'New ticket', status: 'New' }),
-      warnticket: (rr, tk) => renderNewTicket(rr, tk, warningPreset(rr.warn)) };
+      warnticket: (rr, tk) => renderNewTicket(rr, tk, warningPreset(rr.warn)),
+      trackers: renderTrackers, trackersettings: renderTrackerSettings };
     app.replaceChildren(h('p', { class: 'loading', text: 'Loading…' }));
     try {
       await pages[r.page](r, token);
@@ -693,7 +695,8 @@
       h('div', { class: 'meta' }, statusPill(t.status), healthPill(t.health), t.warnings ? h('span', { class: 'why', text: t.warnings }) : null,
         h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }),
         isAdmin() ? h('a', { href: '#edit-' + encodeURIComponent(t.truck_id), text: 'Edit truck' }) : null,
-        isAdmin() ? customerBtn : null),
+        isAdmin() ? customerBtn : null,
+        isAdmin() ? h('a', { class: 'btn ghost small', href: '#trackersettings-' + encodeURIComponent(t.truck_id), text: 'Tracker settings' }) : null),
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' },
         ...detailPanels),
@@ -813,6 +816,248 @@
           h('td', { 'data-label': 'State', text: s.state || '—' }),
           h('td', { 'data-label': 'Map' }, present(s.lat) ? h('a', { href: mapUrl(s.lat, s.lon), target: '_blank', rel: 'noopener', text: 'Map ↗' }) : '—'))))))
         : h('div', { class: 'empty', text: 'No shocks in the last 7 days.' }));
+  };
+
+  // ---------- tracker boards and their settings (admin)
+  const minsSince = (iso) => (iso ? Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000)) : null);
+  // press-twice button for things that are hard to undo
+  const twice = (label, warn, say, fn, cls) => {
+    let armed = false;
+    const b = h('button', { class: 'btn small ' + (cls || 'ghost'), type: 'button', text: label });
+    b.addEventListener('click', async () => {
+      if (!armed) { armed = true; b.textContent = label + ' — press again'; say('bad', warn); return; }
+      b.disabled = true;
+      try { await fn(); } catch (err) { say('bad', friendly(err)); b.disabled = false; }
+    });
+    return b;
+  };
+
+  const renderTrackers = async (r, token) => {
+    const [list, data] = await Promise.all([rpc('web_trackers'), loadEditData()]);
+    if (token !== renderToken) return;
+    const status = h('p', { class: 'status', 'aria-live': 'polite' });
+    const say = (cls, text) => { status.className = 'status ' + cls; status.textContent = text; };
+    const onTruck = Object.fromEntries(list.filter((k) => k.truck_id).map((k) => [k.truck_id, k.device_id]));
+    const truckPick = (current) => h('select', { 'aria-label': 'Truck' }, h('option', { value: '', text: 'Pick a truck…' }),
+      data.trucks.filter((t) => t.truck_id !== current).map((t) => h('option', { value: t.truck_id,
+        text: t.truck_id + (t.name ? ' · ' + t.name : '') + (onTruck[t.truck_id] ? ' (has ' + onTruck[t.truck_id] + ')' : '') })));
+    const assignBox = (k) => {
+      const sel = truckPick(k.truck_id);
+      const btn = h('button', { class: 'btn small', type: 'button', text: k.truck_id ? 'Move' : 'Assign', disabled: true });
+      let armed = false;
+      sel.addEventListener('change', () => { btn.disabled = !sel.value; armed = false; btn.textContent = k.truck_id ? 'Move' : 'Assign'; });
+      btn.addEventListener('click', async () => {
+        const other = onTruck[sel.value];
+        if (other && !armed) {
+          armed = true; btn.textContent += ' — press again';
+          say('bad', `Truck ${sel.value} already has tracker ${other}. It will stop being accepted and go back to “Waiting for a truck”.`);
+          return;
+        }
+        btn.disabled = true;
+        try {
+          await rpc('web_tracker_assign', { p_device: k.device_id, p_truck: sel.value });
+          await route();
+          showNotice(`${k.device_id} is now on truck ${sel.value}.`, 'The tracker picks it up the next time it checks in (within a minute when it’s online).', 'good');
+        } catch (err) { say('bad', friendly(err)); btn.disabled = false; }
+      });
+      return h('div', { class: 'assign' }, sel, btn);
+    };
+    const seen = (k) => {
+      const m = minsSince(k.last_seen);
+      return [k.last_seen ? 'Checked in ' + ago(m) : 'Never checked in',
+        present(k.last_battery_v) ? (k.last_battery_v < 2.5 ? 'outside power' : num(k.last_battery_v, 2) + ' V') : null,
+        k.last_via === 'wifi' ? 'Wi-Fi' + (k.last_ssid ? ' ' + k.last_ssid : '') : k.last_via === 'lte' ? 'Cellular' : null,
+        k.place, k.fw ? 'firmware ' + k.fw : null].filter(Boolean).join(' · ');
+    };
+    const waiting = list.filter((k) => !k.truck_id);
+    const assigned = list.filter((k) => k.truck_id);
+    const row = (k) => h('tr', null,
+      h('td', { class: 'first', 'data-label': 'Tracker' }, h('div', { class: 'mono', text: k.device_id }), h('div', { class: 'note', text: seen(k) })),
+      h('td', { 'data-label': 'Truck' }, k.truck_id
+        ? h('div', null, h('a', { href: '#truck-' + encodeURIComponent(k.truck_id), text: k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '') }),
+          h('div', { class: 'note ' + (k.token_waiting ? 'warn' : ''), text: k.token_waiting ? 'Waiting for the tracker to pick this up'
+            : k.settings_current ? 'Settings up to date' : 'New settings go out on its next send' }))
+        : h('span', { class: 'warn', text: 'Waiting for a truck' })),
+      h('td', { 'data-label': 'Actions' }, h('div', { class: 'actions' }, assignBox(k),
+        k.truck_id ? h('a', { class: 'btn ghost small', href: '#trackersettings-' + encodeURIComponent(k.truck_id), text: 'Settings' }) : null,
+        k.truck_id ? twice('Unassign', `${k.device_id} stops sending as truck ${k.truck_id} and goes back to “Waiting for a truck”.`, say,
+          async () => { await rpc('web_tracker_assign', { p_device: k.device_id, p_truck: null }); route(); }) : null,
+        twice('Forget', `Removes ${k.device_id} from this list${k.truck_id ? ' and stops it sending as truck ' + k.truck_id : ''}. If it checks in again it shows up as new.`, say,
+          async () => { await rpc('web_tracker_forget', { p_device: k.device_id }); route(); }, 'danger'))));
+    const table = (rows, empty) => rows.length
+      ? h('div', { class: 'card scroll' }, h('table', { class: 'stack users' },
+          h('thead', null, h('tr', null, h('th', { text: 'Tracker' }), h('th', { text: 'Truck' }), h('th', { text: '' }))),
+          h('tbody', null, rows.map(row))))
+      : h('div', { class: 'empty', text: empty });
+    app.replaceChildren(
+      h('h1', { class: 'title', text: 'Trackers' }),
+      h('p', { class: 'lede', text: 'Every tracker board that has checked in. All boards run the same firmware: a new one joins FarberGuest (or its setup hotspot, or cellular), shows up under “Waiting for a truck”, and sets itself up within a minute of being assigned.' }),
+      h('div', { class: 'toolbar' }, h('a', { class: 'btn ghost', href: '#trackersettings', text: 'Fleet tracker settings' })),
+      status,
+      h('div', { class: 'section-head' }, h('h2', { text: `Waiting for a truck (${waiting.length})` })),
+      table(waiting, 'No new trackers. Power one up near FarberGuest and it appears here.'),
+      h('div', { class: 'section-head' }, h('h2', { text: `On trucks (${assigned.length})` })),
+      table(assigned, 'No trackers are on trucks yet. Trackers set up with the older firmware appear here after they update.'));
+  };
+
+  // Settings shown in friendly units; stored as the tracker uses them.
+  const TS_GROUPS = [
+    ['Reporting schedule', [
+      { k: 'wifi_send_s', label: 'On Wi-Fi, send every', unit: 'seconds', mul: 1, lo: 10, hi: 3600 },
+      { k: 'cell_send_s', label: 'On cellular, send every', unit: 'minutes', mul: 60, lo: 60, hi: 86400 },
+      { k: 'parked1_after_h', label: 'Parked: slow down after', unit: 'hours', mul: 1, lo: 1, hi: 720 },
+      { k: 'parked1_send_s', label: '…then send every', unit: 'minutes', mul: 60, lo: 60, hi: 86400 },
+      { k: 'parked2_after_h', label: 'Parked longer: slow down after', unit: 'hours', mul: 1, lo: 1, hi: 720 },
+      { k: 'parked2_send_s', label: '…then send every', unit: 'minutes', mul: 60, lo: 60, hi: 86400 },
+      { k: 'move_m', label: 'Counts as moving after', unit: 'feet', mul: 0.3048, lo: 20, hi: 5000, dbDigits: 0, uiDigits: 0 },
+      { k: 'move_kmh', label: 'or going faster than', unit: 'mph', mul: 1.609344, lo: 2, hi: 50, dbDigits: 1, uiDigits: 1 }]],
+    ['Backup battery', [
+      { k: 'batt_low_v', label: 'Send a last message and sleep below', unit: 'volts', mul: 1, lo: 3.0, hi: 4.1, dbDigits: 2, uiDigits: 2 },
+      { k: 'batt_critical_v', label: 'Stop the daily check-ins below', unit: 'volts', mul: 1, lo: 2.9, hi: 4.0, dbDigits: 2, uiDigits: 2 },
+      { k: 'batt_resume_v', label: 'Wake up again at', unit: 'volts', mul: 1, lo: 3.3, hi: 4.2, dbDigits: 2, uiDigits: 2 },
+      { k: 'checkin_h', label: 'While asleep, check in every', unit: 'hours', mul: 1, lo: 1, hi: 168 }]],
+    ['Connection and sensors', [
+      { k: 'apn', label: 'Cellular APN', text: true, hint: 'From the SIM provider. Empty = network default.' },
+      { k: 'prefer_lte', label: 'Use cellular even when Wi-Fi works', bool: ['No', 'Yes'] },
+      { k: 'obd', label: 'Read the truck’s OBD-II port', bool: ['Off', 'On'], hint: 'Turn on once a CAN transceiver is wired in.' },
+      { k: 'ap_password', label: 'Setup hotspot password', text: true, pw: true, hint: '8 to 63 characters. Used to join the tracker’s own hotspot.' }]]];
+  const toUi = (f, v) => (!present(v) ? '' : f.bool ? String(v) : f.text ? String(v) : String(+(Number(v) / f.mul).toFixed(f.uiDigits ?? 1)));
+  const toDb = (f, s) => {
+    if (f.bool) return s === '' ? null : s === 'true';
+    if (f.text) return s;
+    const n = Number(s) * f.mul;
+    return +n.toFixed(f.dbDigits ?? 0);
+  };
+  const uiRange = (f) => [toUi(f, f.lo), toUi(f, f.hi)];
+
+  const renderTrackerSettings = async (r, token) => {
+    const truck = r.id;
+    const d = await rpc('web_tracker_settings', { p_truck: truck || null });
+    if (token !== renderToken) return;
+    const fleet = d.fleet || {};
+    const mine = truck ? (d.truck || {}) : fleet;
+    const inputs = {};
+    const fieldFor = (f) => {
+      const id = 'ts-' + f.k;
+      const fleetUi = toUi(f, fleet[f.k]);
+      let input;
+      if (f.bool) {
+        input = h('select', { id },
+          truck ? h('option', { value: '', text: 'Fleet setting (' + (fleet[f.k] ? f.bool[1] : f.bool[0]) + ')' }) : null,
+          h('option', { value: 'false', text: f.bool[0] }), h('option', { value: 'true', text: f.bool[1] }));
+        input.value = present(mine[f.k]) ? String(mine[f.k]) : (truck ? '' : 'false');
+      } else {
+        input = h('input', { id, type: f.text ? (f.pw ? 'password' : 'text') : 'number', step: 'any', inputmode: f.text ? null : 'decimal',
+          autocomplete: 'off', maxlength: f.text ? '63' : null,
+          placeholder: truck ? (present(fleet[f.k]) && fleet[f.k] !== '' ? 'Fleet: ' + fleetUi : 'Fleet setting') : '' });
+        input.value = toUi(f, mine[f.k]);
+      }
+      inputs[f.k] = input;
+      let box = input;
+      if (f.pw) {
+        const t = h('button', { type: 'button', class: 'pw-toggle', text: 'Show', onclick: () => { const s = input.type === 'password'; input.type = s ? 'text' : 'password'; t.textContent = s ? 'Hide' : 'Show'; } });
+        box = h('div', { class: 'pw-wrap' }, input, t);
+      }
+      return h('div', { class: 'field' }, h('label', { for: id, text: f.label + (f.unit ? ` (${f.unit})` : '') }), box,
+        f.hint ? h('p', { class: 'note', text: f.hint }) : null);
+    };
+
+    // Wi-Fi networks: the truck's own (tried first), or the fleet's
+    const wifiRows = h('div', { class: 'wifi-rows' });
+    const addWifi = (n) => {
+      const ssid = h('input', { type: 'text', maxlength: '32', placeholder: 'Network name', 'aria-label': 'Network name', value: n ? n.ssid : '' });
+      const pass = h('input', { type: 'password', maxlength: '63', placeholder: 'Password (empty if open)', 'aria-label': 'Password', autocomplete: 'off', value: n ? n.pass : '' });
+      const show = h('button', { type: 'button', class: 'pw-toggle', text: 'Show', onclick: () => { const s = pass.type === 'password'; pass.type = s ? 'text' : 'password'; show.textContent = s ? 'Hide' : 'Show'; } });
+      const row = h('div', { class: 'wifi-row' }, ssid, h('div', { class: 'pw-wrap' }, pass, show),
+        h('button', { type: 'button', class: 'chip-x', 'aria-label': 'Remove network', text: '×', onclick: () => { row.remove(); addBtn.disabled = false; refresh(); } }));
+      row.get = () => ({ ssid: ssid.value.trim(), pass: pass.value });
+      wifiRows.append(row);
+      addBtn.disabled = wifiRows.children.length >= 5;
+    };
+    const addBtn = h('button', { type: 'button', class: 'btn ghost small', text: '+ Add a network', onclick: () => { addWifi(); refresh(); } });
+    (mine.wifi || []).forEach(addWifi);
+
+    const collect = () => {
+      const out = {};
+      for (const [, fields] of TS_GROUPS) for (const f of fields) {
+        const v = inputs[f.k].value;
+        if (f.text) { if (v !== '' || (!truck && f.k === 'apn')) out[f.k] = v; continue; }
+        if (v === '') continue;
+        out[f.k] = toDb(f, v);
+      }
+      const nets = [...wifiRows.children].map((r2) => r2.get()).filter((n) => n.ssid);
+      if (nets.length) out.wifi = nets;
+      return out;
+    };
+    const problems = () => {
+      const p = [];
+      for (const [, fields] of TS_GROUPS) for (const f of fields) {
+        const v = inputs[f.k].value;
+        if (f.bool || v === '') { if (!truck && v === '' && !f.text && !f.bool) p.push(`${f.label}: needs a value.`); continue; }
+        if (f.text) { if (f.pw && (v.length < 8 || v.length > 63)) p.push('Setup hotspot password must be 8 to 63 characters.'); continue; }
+        const db = toDb(f, v);
+        if (!Number.isFinite(db) || db < f.lo || db > f.hi) { const [a, b] = uiRange(f); p.push(`${f.label} must be between ${a} and ${b} ${f.unit}.`); }
+      }
+      for (const n of [...wifiRows.children].map((r2) => r2.get())) {
+        if (n.ssid && n.pass && (n.pass.length < 8 || n.pass.length > 63)) p.push(`Password for “${n.ssid}” must be 8 to 63 characters, or empty for an open network.`);
+        if (!n.ssid && n.pass) p.push('A Wi-Fi password has no network name.');
+      }
+      return p;
+    };
+
+    let start = '';
+    const snap = () => JSON.stringify(collect());
+    const status = h('span', { class: 'status', 'aria-live': 'polite' });
+    const save = h('button', { class: 'btn', type: 'submit', text: 'Save settings' });
+    const undo = h('button', { class: 'btn ghost', type: 'button', text: 'Undo changes', onclick: () => route() });
+    const refresh = () => {
+      const dirty = snap() !== start;
+      save.disabled = !dirty; undo.disabled = !dirty;
+      status.className = 'status ' + (dirty ? 'dirty' : '');
+      status.textContent = dirty ? 'Changes not saved yet' : '';
+    };
+    unsaved.dirty = () => snap() !== start;
+
+    const k = d.tracker;
+    const intro = truck
+      ? [h('p', { class: 'lede', text: `Leave a box empty to use the fleet setting (shown greyed out). Wi-Fi networks here are tried before the fleet’s.` }),
+        h('div', { class: 'notice ' + (!k ? 'bad' : d.current ? 'good' : '') },
+          !k ? 'No tracker on this truck checks in with the new firmware yet. These settings wait until one does.'
+            : `Tracker ${k.device_id}, last checked in ${ago(minsSince(k.last_seen))}. ` + (d.current ? 'It has these settings.'
+              : 'Saved changes reach it on its next send' + (d.report_interval_s ? ` (it sends every ${fmtEvery(d.report_interval_s)}).` : '.')))]
+      : [h('p', { class: 'lede', text: 'Used by every tracker unless its truck has its own setting. Changes reach each tracker on its next send.' }),
+        d.fleet_updated_by ? h('p', { class: 'note', text: `Last changed by ${d.fleet_updated_by}, ${fmtTime(d.fleet_updated_at)}.` }) : null];
+
+    const form = h('form', { class: 'form', novalidate: true },
+      h('fieldset', null, h('legend', { text: truck ? 'This truck’s Wi-Fi networks' : 'Wi-Fi networks for every tracker' }),
+        h('p', { class: 'note', style: 'margin-bottom:8px', text: truck ? 'Usually the truck’s own Wi-Fi. Up to 5.'
+          : 'Up to 5. FarberGuest (open) is the starting network. Networks typed on a tracker’s setup page are kept on that tracker too.' }),
+        wifiRows, addBtn),
+      TS_GROUPS.map(([name, fields]) => h('fieldset', null, h('legend', { text: name }), h('div', { class: 'grid' }, fields.map(fieldFor)))),
+      h('div', { class: 'actions sticky' }, save, undo, status));
+    start = snap();
+    refresh();
+    form.addEventListener('input', refresh);
+    form.addEventListener('change', refresh);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const p = problems();
+      if (p.length) { status.className = 'status bad'; status.textContent = p.join(' '); return; }
+      save.disabled = true; status.className = 'status busy'; status.textContent = 'Saving…';
+      try {
+        await rpc('web_tracker_settings_save', { p_truck: truck || null, p_settings: collect() });
+        unsaved.dirty = () => false;
+        await route();
+        const st = document.querySelector('.actions .status');
+        if (st) { st.className = 'status ok'; st.textContent = 'Saved'; }
+      } catch (err) { status.className = 'status bad'; status.textContent = 'Not saved: ' + friendly(err); save.disabled = false; }
+    });
+    app.replaceChildren(
+      h('a', { class: 'back', href: truck ? '#truck-' + encodeURIComponent(truck) : '#trackers', text: truck ? '← Truck ' + truck : '← Trackers' }),
+      h('h1', { class: 'title', text: truck ? `Tracker settings · ${truck}` : 'Fleet tracker settings' }),
+      ...intro,
+      truck ? h('p', { class: 'note' }, h('a', { href: '#trackersettings', text: 'Fleet tracker settings →' })) : null,
+      form);
   };
 
   // ---------- edit and add trucks (admin)

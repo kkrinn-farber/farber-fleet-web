@@ -329,3 +329,13 @@ fieldset > .note { margin: -2px 0 10px; }
 .card.scroll table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--fg) 4.5%, transparent); }
 .card.scroll table tbody tr td:first-child { border-top-left-radius: 0; }
 @media (max-width: 640px) { .card.scroll table.stack tbody tr:nth-child(even) { background: color-mix(in srgb, var(--fg) 4.5%, transparent); } .card.scroll table.stack tbody tr:nth-child(even) td { background: transparent; } .card.scroll table.stack tbody tr { padding-left: 8px; padding-right: 8px; } }
+
+/* Trackers and tracker settings */
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; }
+.wifi-rows { display: grid; gap: 8px; margin-bottom: 8px; }
+.wifi-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
+.wifi-row .pw-wrap { margin: 0; }
+@media (max-width: 640px) { .wifi-row { grid-template-columns: 1fr auto; } .wifi-row .pw-wrap { grid-column: 1; } }
+.assign { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.assign select { min-width: 0; max-width: 240px; }
+.note.warn, td .warn { color: var(--warn, #a15c00); }

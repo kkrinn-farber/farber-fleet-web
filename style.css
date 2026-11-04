@@ -251,3 +251,9 @@ textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border
 .note-body, .ticket-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ticket-text { margin-top: 8px; }
 .note-form { display: grid; gap: 8px; }
+.choices { display: grid; gap: 8px; margin-bottom: 10px; }
+.choice { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 15px; }
+.choice input { margin-top: 4px; flex: none; }
+.choice input:disabled + span { opacity: .55; }
+fieldset > .note { margin: -2px 0 10px; }
+.pair { grid-column: 1 / -1; display: grid; gap: 10px 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }

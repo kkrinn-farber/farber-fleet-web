@@ -65,7 +65,7 @@ repository: the token file lets anyone pretend to be a truck.
 | `#requests` | Service tickets (Service users and admins): open tickets first plus the last 90 days of closed ones, filters, search, **New ticket** |
 | `#ticket-11001` | One ticket. Service users and admins edit every field and add team notes; status, schedule and assignment changes are logged as notes. The truck's customer sees a read-only version without notes |
 | `#newticket` | New ticket for any truck (Service users and admins) |
-| `#request-19227` | A customer's Request service form: type, urgency, a short summary and details. It creates a ticket |
+| `#request-19227` | A customer's Request service form: type, urgency, a short summary, details, where the truck is (its GPS position or typed) and who to contact (can be someone else). It creates a ticket |
 | `#mytrucks` | Opens the customer's first truck |
 | `#account` | Change your password |
 

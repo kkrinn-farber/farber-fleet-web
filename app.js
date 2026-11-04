@@ -998,7 +998,13 @@
       hours: inF('Generator hours', v.hours, { type: 'number', min: '0', step: '0.1' }),
       type_code: selF('Counts as an oil change', OIL_TYPES, v.type_code || ''),
       work_done: areaF('Work done', v.work_done, { maxlength: '4000' }),
+      truck_location: inF('Truck location', v.truck_location, { maxlength: '300', placeholder: 'Address, yard or GPS description' }),
+      req_contact_name: inF('Contact name', v.req_contact_name, { maxlength: '120' }),
+      req_contact_role: inF('Role', v.req_contact_role, { maxlength: '80' }),
+      req_contact_phone: inF('Phone', v.req_contact_phone, { type: 'tel', maxlength: '40' }),
+      req_contact_email: inF('Email', v.req_contact_email, { type: 'email', maxlength: '160' }),
     };
+    f.truck_location.wrap.classList.add('wide');
     f.type_code.wrap.title = 'Oil changes reset the due date on the truck page';
     const snap = () => JSON.stringify(Object.fromEntries(Object.entries(f).map(([key, x]) => [key, x.input.value]).concat([['truck', truckSel ? truckSel.input.value : '']])));
     const start = snap();
@@ -1010,6 +1016,8 @@
       h('fieldset', null, h('legend', { text: 'Request' }), h('div', { class: 'grid' },
         truckSel ? (truckSel.wrap.classList.add('wide'), truckSel.wrap) : null,
         (f.title.wrap.classList.add('wide'), f.title.wrap), f.category.wrap, f.urgency.wrap, f.details.wrap)),
+      h('fieldset', null, h('legend', { text: 'Truck location and contact' }), h('div', { class: 'grid' },
+        f.truck_location.wrap, f.req_contact_name.wrap, f.req_contact_role.wrap, f.req_contact_phone.wrap, f.req_contact_email.wrap)),
       h('fieldset', null, h('legend', { text: 'Status and scheduling' }), h('div', { class: 'grid' },
         f.status.wrap, f.scheduled_for.wrap, f.assigned_to.wrap)),
       h('fieldset', null, h('legend', { text: 'Work done' }), h('div', { class: 'grid' },
@@ -1055,6 +1063,14 @@
       form);
   };
 
+  const contactPanel = (k) => panel('Truck location and contact',
+    h('div', { class: 'kv' }, h('span', { text: 'Truck location' }), k.truck_location
+      ? (present(k.truck_lat) ? h('a', { href: mapUrl(k.truck_lat, k.truck_lon), target: '_blank', rel: 'noopener', text: k.truck_location }) : h('b', { text: k.truck_location }))
+      : h('b', { text: '—' })),
+    kv('Contact', [k.req_contact_name, k.req_contact_role].filter(Boolean).join(', ') || null),
+    h('div', { class: 'kv' }, h('span', { text: 'Phone' }), k.req_contact_phone ? h('a', { href: 'tel:' + String(k.req_contact_phone).replace(/[^0-9+]/g, ''), text: k.req_contact_phone }) : h('b', { text: '—' })),
+    h('div', { class: 'kv' }, h('span', { text: 'Email' }), k.req_contact_email ? h('a', { href: 'mailto:' + k.req_contact_email, text: k.req_contact_email }) : h('b', { text: '—' })));
+
   const renderTicket = async (r, token) => {
     const no = Number(r.id);
     let k;
@@ -1077,9 +1093,10 @@
     if (k.can_edit) {
       const info = h('div', { class: 'panels' },
         panel('Truck', h('div', { class: 'kv' }, h('span', { text: 'Truck' }), h('a', { href: '#truck-' + encodeURIComponent(k.truck_id), text: k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '') })),
-          kv('Company', k.company), kv('Contact', k.contact_name),
+          kv('Company', k.company), kv('Main contact', k.contact_name),
           h('div', { class: 'kv' }, h('span', { text: 'Phone' }), k.contact_phone ? h('a', { href: 'tel:' + String(k.contact_phone).replace(/[^0-9+]/g, ''), text: k.contact_phone }) : h('b', { text: '—' })),
           h('div', { class: 'kv' }, h('span', { text: 'Email' }), k.contact_email ? h('a', { href: 'mailto:' + k.contact_email, text: k.contact_email }) : h('b', { text: '—' }))),
+        contactPanel(k),
         panel('Ticket', kv('Ticket number', '#' + k.ticket_no), kv('Opened', fmtTime(k.created_at)), kv('Requested by', k.requester_name || (k.source === 'Farber' ? 'Farber' : null)),
           kv('Last updated', fmtTime(k.updated_at)), kv('Updated by', k.updated_by)));
       app.replaceChildren(...head, info,
@@ -1089,6 +1106,7 @@
         h('div', { class: 'panels' },
           panel('Your request', kv('Type', k.category), kv('Urgency', k.urgency), kv('Sent', fmtTime(k.created_at)), kv('Truck', k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '')),
             k.details ? h('p', { class: 'ticket-text', text: k.details }) : null),
+          contactPanel(k),
           panel('Status', kv('Status', k.status, null, k.status === 'Done' ? 'ok' : null), kv('Scheduled for', k.scheduled_for ? fmtDay(k.scheduled_for) : null), kv('Assigned to', k.assigned_to)),
           k.status === 'Done' || k.work_done ? panel('Work done', kv('Done on', k.done_on ? fmtDay(k.done_on) : null), kv('Done by', k.done_by),
             k.work_done ? h('p', { class: 'ticket-text', text: k.work_done }) : null) : null),
@@ -1125,22 +1143,50 @@
     const title = inF('In a few words, what do you need?', '', { maxlength: '120', placeholder: 'For example: Oil change, A/C not cooling' });
     const details = areaF('Anything else we should know? (optional)', '', { maxlength: '2000', rows: '5', placeholder: 'What happened, when it started, where the truck is, best time to reach you…' });
     title.wrap.classList.add('wide');
-    const snap = () => [cat.input.value, title.input.value, details.input.value].join('|');
-    unsaved.dirty = () => snap() !== '||';
+    // where the truck is: its GPS position, or typed in
+    const hasGps = present(t.lat);
+    const gpsText = hasGps ? 'near ' + ([t.near_city, t.near_state].filter(Boolean).join(', ') || 'its last position') + ' (last report ' + ago(t.minutes_since_seen) + ')' : 'no GPS position yet';
+    const radio = (val, label, extra) => { const id = fId(); const r = h('input', { type: 'radio', name: 'locmode', id, value: val }); return { r, el: h('label', { class: 'choice', for: id }, r, h('span', null, label, extra || '')) }; };
+    const gpsR = radio('gps', 'Use the truck’s GPS location', h('span', { class: 'note' }, ' ', gpsText, hasGps ? ' · ' : '', hasGps ? h('a', { href: mapUrl(t.lat, t.lon), target: '_blank', rel: 'noopener', text: 'map ↗' }) : ''));
+    const entR = radio('entered', 'Type where it is');
+    gpsR.r.disabled = !hasGps;
+    (hasGps ? gpsR : entR).r.checked = true;
+    const locIn = areaF('Address or description', '', { rows: '2', maxlength: '300', placeholder: 'Street address, yard, gate or parking spot' });
+    const syncLoc = () => { locIn.wrap.hidden = !entR.r.checked; };
+    gpsR.r.addEventListener('change', syncLoc); entR.r.addEventListener('change', syncLoc); syncLoc();
+    // who Farber should contact about this request (can be someone else)
+    const cName = inF('Contact name', me.name || '', { maxlength: '120', autocomplete: 'name' });
+    const cRole = inF('Role (optional)', '', { maxlength: '80', placeholder: 'Fleet manager, driver, site lead…' });
+    const cPhone = inF('Phone', '', { type: 'tel', maxlength: '40', autocomplete: 'tel' });
+    const cEmail = inF('Email', me.email || '', { type: 'email', maxlength: '160', autocomplete: 'email' });
+    const snap = () => [cat.input.value, title.input.value, details.input.value, locIn.input.value, cRole.input.value, cPhone.input.value].join('|');
+    const start0 = snap();
+    unsaved.dirty = () => snap() !== start0;
     const st = h('span', { class: 'status', 'aria-live': 'polite' });
     const preview = !isCustomer();
     const btn = h('button', { class: 'btn', type: 'submit', text: 'Send request', disabled: preview });
     const form = h('form', { class: 'card form', novalidate: true },
-      h('div', { class: 'grid' }, cat.wrap, urg.wrap, title.wrap, details.wrap),
+      h('fieldset', null, h('legend', { text: 'What do you need?' }), h('div', { class: 'grid' }, h('div', { class: 'pair' }, cat.wrap, urg.wrap), title.wrap, details.wrap)),
+      h('fieldset', null, h('legend', { text: 'Where is the truck?' }), h('div', { class: 'choices' }, gpsR.el, entR.el), locIn.wrap),
+      h('fieldset', null, h('legend', { text: 'Who should Farber contact?' }),
+        h('p', { class: 'note', text: 'It can be someone other than you, like a fleet manager or the driver. Give a phone number or an email (or both).' }),
+        h('div', { class: 'grid' }, cName.wrap, cRole.wrap, cPhone.wrap, cEmail.wrap)),
       h('div', { class: 'actions' }, btn, st));
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (preview) return;
       if (!cat.input.value) { st.className = 'status bad'; st.textContent = 'Choose what kind of service you need.'; return; }
       if (!title.input.value.trim()) { st.className = 'status bad'; st.textContent = 'Say briefly what you need.'; title.input.focus(); return; }
+      const mode = gpsR.r.checked ? 'gps' : 'entered';
+      if (mode === 'entered' && !locIn.input.value.trim()) { st.className = 'status bad'; st.textContent = 'Type where the truck is.'; locIn.input.focus(); return; }
+      if (!cName.input.value.trim()) { st.className = 'status bad'; st.textContent = 'Give a contact name.'; cName.input.focus(); return; }
+      if (!cPhone.input.value.trim() && !cEmail.input.value.trim()) { st.className = 'status bad'; st.textContent = 'Give a phone number or email for the contact.'; cPhone.input.focus(); return; }
+      if (cEmail.input.value.trim() && !EMAIL_OK.test(cEmail.input.value.trim())) { st.className = 'status bad'; st.textContent = 'That email address doesn’t look right.'; cEmail.input.focus(); return; }
       btn.disabled = true; st.className = 'status busy'; st.textContent = 'Sending…';
       try {
-        const res = await rpc('web_customer_ticket_create', { p_truck: t.truck_id, p_category: cat.input.value, p_title: title.input.value.trim(), p_details: details.input.value.trim(), p_urgency: urg.input.value });
+        const res = await rpc('web_customer_ticket_create', { p_truck: t.truck_id, p_category: cat.input.value, p_title: title.input.value.trim(), p_details: details.input.value.trim(), p_urgency: urg.input.value,
+          p_location_mode: mode, p_location: mode === 'entered' ? locIn.input.value.trim() : null,
+          p_contact_name: cName.input.value.trim(), p_contact_role: cRole.input.value.trim(), p_contact_phone: cPhone.input.value.trim(), p_contact_email: cEmail.input.value.trim() });
         unsaved.dirty = () => false;
         location.hash = '#ticket-' + res.ticket_no;
       } catch (err) { st.className = 'status bad'; st.textContent = friendly(err); btn.disabled = false; }
@@ -1187,13 +1233,14 @@
         .map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-pressed': String(tab === k), onclick: () => { tab = k; draw(); } }, `${l} (${n(k)})`)));
       const q = clean(search.value).toLowerCase();
       const rows = reqs.filter((x) => (tab === 'all' || (tab === 'open' ? isOpen(x) : x.status === tab))
-        && (!q || ['#' + x.ticket_no, x.truck_id, x.truck_name, x.company, x.requester_name, x.requested_by, x.title, x.details].some((v) => String(v || '').toLowerCase().includes(q))));
+        && (!q || ['#' + x.ticket_no, x.truck_id, x.truck_name, x.company, x.requester_name, x.requested_by, x.req_contact_name, x.truck_location, x.title, x.details].some((v) => String(v || '').toLowerCase().includes(q))));
       count.textContent = `${rows.length} ${rows.length === 1 ? 'ticket' : 'tickets'}`;
       tbody.replaceChildren(...(rows.length ? rows.map((x) => h('tr', null,
         h('td', { class: 'first nowrap', 'data-label': 'Ticket' }, ticketLink(x.ticket_no)),
         h('td', { class: 'nowrap', 'data-label': 'Requested' }, h('div', { text: fmtDay(x.created_at) }), h('div', { class: 'note', text: ago(Math.round((Date.now() - new Date(x.created_at).getTime()) / 60000)) })),
         h('td', { 'data-label': 'Truck' }, h('a', { href: '#truck-' + encodeURIComponent(x.truck_id) }, h('strong', { text: x.truck_id })), x.truck_name ? h('div', { class: 'note', text: x.truck_name }) : null),
-        h('td', { 'data-label': 'Customer' }, h('div', { text: x.requester_name || (x.source === 'Farber' ? 'Farber' : x.requested_by) || '—' }), x.company ? h('div', { class: 'note', text: x.company }) : null),
+        h('td', { 'data-label': 'Customer' }, h('div', { text: x.requester_name || (x.source === 'Farber' ? 'Farber' : x.requested_by) || '—' }), x.company ? h('div', { class: 'note', text: x.company }) : null,
+          x.req_contact_name && x.req_contact_name !== x.requester_name ? h('div', { class: 'note', text: 'Contact: ' + [x.req_contact_name, x.req_contact_phone].filter(Boolean).join(' · ') }) : null),
         h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, h('a', { href: '#ticket-' + x.ticket_no, text: x.title })), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
         h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + (URG_TONE[x.urgency] || 'muted'), text: x.urgency })),
         h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + (REQ_TONE[x.status] || 'muted'), text: x.status })),

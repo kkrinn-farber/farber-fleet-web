@@ -1238,6 +1238,9 @@
       throw err;
     }
     if (token !== renderToken) return;
+    // follow "View as": an admin viewing as Sales gets the Sales view; as Engineering, no ticket
+    if (!isCustomer() && !canSeeTickets()) { app.replaceChildren(h('div', { class: 'empty', text: 'You can’t open this ticket.' })); return; }
+    if (k.can_edit && !isServiceView()) k.can_edit = false;
     const head = [
       h('a', { class: 'back', href: k.can_note ? '#truck-' + encodeURIComponent(k.truck_id) : '#customer-' + encodeURIComponent(k.truck_id), text: k.can_note ? '← Truck ' + k.truck_id : '← Back to my truck' }),
       h('p', { class: 'eyebrow', text: 'Service ticket #' + k.ticket_no }),

@@ -56,7 +56,7 @@ repository: the token file lets anyone pretend to be a truck.
 | `#truck-19227` | One truck: truck details (address, contact, Farber team), maintenance buttons (Service), service requests, events, right now (oil changes are in the Truck and Generator cards), history charts |
 | `#offline` | Trucks offline, with batteries, last location and map links |
 | `#shocks` | Shocks this week, with speed, severity, city/state and map links |
-| `#warnings` | Trucks with warnings: every warning per truck, status and last update |
+| `#warnings` | Trucks with warnings: every warning per truck with its open ticket, or **Open ticket** (Service and admins) to start one filled in from the warning |
 | `#edit`, `#edit-19227` | Edit trucks (admins) |
 | `#new` | Add a truck (admins) |
 | `#users` | Users (admins): **Farber team** (types Sales/Service/Engineering, Viewer/Admin, tabs by type) and **Customers** (their trucks, **+ Add a truck** when they buy another, × to remove one) |

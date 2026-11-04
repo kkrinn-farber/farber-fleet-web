@@ -261,3 +261,9 @@ fieldset > .note { margin: -2px 0 10px; }
 .status-actions .actions { align-items: center; flex-wrap: wrap; }
 .action-panel .card { max-width: 46rem; }
 .action-panel h3 { margin-bottom: 4px; }
+.warn-list.with-tickets { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.warn-list.with-tickets li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.warn-list.with-tickets li:last-child { border-bottom: 0; }
+.warn-name { color: var(--warn); font-weight: 600; }
+.warn-ticket { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.warn-tk { display: inline-flex; gap: 6px; align-items: center; }

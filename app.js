@@ -172,6 +172,7 @@
     if ((m = /^(work|schedule|done)-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'service', kind: m[1], id: m[2] };
     if ((m = /^request-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'request', id: m[1] };
     if ((m = /^ticket-(\d{1,9})$/.exec(raw))) return { page: 'ticket', id: m[1] };
+    if ((m = /^warnticket-([A-Za-z0-9_-]{1,32})\/(.{1,120})$/.exec(raw))) return { page: 'warnticket', id: m[1], warn: m[2] };
     if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks', 'requests', 'newticket'].includes(raw)) return { page: raw, id: null };
     return { page: 'trucks', id: null };
   };
@@ -198,10 +199,10 @@
     // Customers only get their own trucks' customer pages and their account.
     if (isCustomer() && !['customer', 'account', 'mytrucks', 'request', 'ticket'].includes(r.page)) r = { page: 'mytrucks', id: null };
     // Service requests: Service users and admins
-    if ((r.page === 'requests' || r.page === 'newticket') && !isServiceView()) r = { page: 'trucks', id: null };
+    if ((r.page === 'requests' || r.page === 'newticket' || r.page === 'warnticket') && !isServiceView()) r = { page: 'trucks', id: null };
     // Sales doesn't get the offline, shocks or warnings pages
     if (isSalesView() && ['offline', 'shocks', 'warnings'].includes(r.page)) r = { page: 'trucks', id: null };
-    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page);
+    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page === 'warnticket' ? 'warnings' : r.page);
     window.scrollTo(0, 0);
     const adminPages = ['edit', 'new', 'users'];
     if (adminPages.includes(r.page) && !isAdmin()) {
@@ -211,7 +212,8 @@
     const pages = { trucks: renderFleet, truck: renderTruck, offline: renderOffline, shocks: renderShocks, warnings: renderWarnings,
       edit: r.id ? renderEditor : renderEditList, new: renderEditor, users: renderUsers, account: renderAccount,
       customer: renderCustomer, mytrucks: renderMyTrucks, service: renderServicePage, requests: renderRequests, request: renderRequestForm,
-      ticket: renderTicket, newticket: (rr, tk) => renderNewTicket(rr, tk, { heading: 'New ticket', status: 'New' }) };
+      ticket: renderTicket, newticket: (rr, tk) => renderNewTicket(rr, tk, { heading: 'New ticket', status: 'New' }),
+      warnticket: (rr, tk) => renderNewTicket(rr, tk, warningPreset(rr.warn)) };
     app.replaceChildren(h('p', { class: 'loading', text: 'Loading…' }));
     try {
       await pages[r.page](r, token);
@@ -636,8 +638,21 @@
   };
 
   // ---------- offline and shocks
+  // a ticket for a warning: Open ticket fills the form from the warning
+  const WARN_TICKET = {
+    'Not reporting': ['Tracker not reporting', 'Repair'], 'Check engine': ['Check engine light', 'Repair'], 'Fault codes': ['Engine fault codes', 'Repair'],
+    Generator: ['Generator fault', 'Repair'], Jacks: ['Leveling jacks fault', 'Repair'], 'No internet': ['No internet on the truck', 'Repair'],
+    'On cellular with power on': ['On cellular while powered (truck Wi-Fi down)', 'Repair'],
+  };
+  const OVERDUE_TYPE = { 'Engine oil change overdue': 'engine_oil', 'Generator oil change overdue': 'generator_oil' };
+  const warningPreset = (w) => {
+    const [title, category] = WARN_TICKET[w] || [w, OVERDUE_TYPE[w] || /overdue$/.test(w) ? 'Maintenance' : 'Repair'];
+    return { heading: 'New ticket for a warning', status: 'New', category, title, type_code: OVERDUE_TYPE[w] || '', warning_key: w,
+      details: `Opened from the warning “${w}” on ${fmtDay(todayIso())}.` };
+  };
+
   const renderWarnings = async (r, token) => {
-    const fleet = await rpc('web_fleet');
+    const [fleet, wt] = await Promise.all([rpc('web_fleet'), rpc('web_warning_tickets')]);
     if (token !== renderToken) return;
     const rows = fleet.filter((t) => t.health === 'Warning')
       .map((t) => ({ ...t, list: String(t.warnings || '').split(', ').filter(Boolean) }))
@@ -645,12 +660,21 @@
     app.replaceChildren(
       h('a', { class: 'back', href: '#trucks', text: '← All trucks' }),
       h('h1', { class: 'title', text: `Trucks with warnings (${rows.length})` }),
-      h('p', { class: 'lede', text: 'Every truck with something that needs attention, most warnings first. Open a truck to see the details.' }),
+      h('p', { class: 'lede', text: 'Every truck with something that needs attention, most warnings first. Each warning shows its open ticket, or a button to open one. Open a truck to see the details.' }),
       rows.length ? h('div', { class: 'card scroll' }, h('table', { class: 'stack' },
-        h('thead', null, h('tr', null, ['Truck', 'Warnings', 'Status', 'Last update'].map((x) => h('th', { text: x })))),
+        h('thead', null, h('tr', null, ['Truck', 'Warnings and tickets', 'Status', 'Last update'].map((x) => h('th', { text: x })))),
         h('tbody', null, rows.map((t) => h('tr', null,
           h('td', { class: 'first', 'data-label': 'Truck' }, h('a', { href: '#truck-' + encodeURIComponent(t.truck_id), text: t.truck_id + (t.truck_name ? ' · ' + t.truck_name : '') })),
-          h('td', { 'data-label': 'Warnings' }, h('ul', { class: 'warn-list' }, t.list.map((w) => h('li', { text: w })))),
+          h('td', { 'data-label': 'Warnings' }, h('ul', { class: 'warn-list with-tickets' }, t.list.map((w) => {
+            const tks = wt.filter((k) => k.truck_id === t.truck_id && (k.warning_key === w || k.overdue_key === w));
+            return h('li', null, h('span', { class: 'warn-name', text: w }),
+              h('span', { class: 'warn-ticket' }, tks.length
+                ? tks.map((k) => h('span', { class: 'warn-tk' }, canOpenTickets() ? ticketLink(k.ticket_no) : h('span', { class: 'ticket-no', text: '#' + k.ticket_no }),
+                    ' ', h('span', { class: 'pill ' + (REQ_TONE[k.status] || 'muted'), text: k.status })))
+                : isServiceView()
+                  ? h('a', { class: 'btn small', href: '#warnticket-' + encodeURIComponent(t.truck_id) + '/' + encodeURIComponent(w), text: 'Open ticket' })
+                  : h('span', { class: 'note', text: 'No ticket' })));
+          }))),
           h('td', { 'data-label': 'Status' }, statusPill(t.status)),
           h('td', { 'data-label': 'Last update', text: t.last_seen ? `${fmtTime(t.last_seen)} (${ago(t.minutes_since_seen)})` : 'Never reported' }))))))
         : h('div', { class: 'empty', text: 'No warnings. Every truck is good.' }));
@@ -1027,6 +1051,7 @@
       e.preventDefault();
       const data = Object.fromEntries(Object.entries(f).map(([key, x]) => [key, String(x.input.value).trim()]));
       data.truck_id = truckSel ? truckSel.input.value : v.truck_id;
+      if (isNew && v.warning_key) data.warning_key = v.warning_key;
       if (!data.truck_id) { st.className = 'status bad'; st.textContent = 'Pick a truck.'; return; }
       if (!data.title) { st.className = 'status bad'; st.textContent = 'Give the ticket a title.'; f.title.input.focus(); return; }
       btn.disabled = true; st.className = 'status busy'; st.textContent = 'Saving…';
@@ -1133,7 +1158,8 @@
         h('span', { class: 'pill ' + (REQ_TONE[k.status] || 'muted'), text: k.status }),
         h('span', { class: 'pill ' + (URG_TONE[k.urgency] || 'muted'), text: k.urgency }),
         h('span', { class: 'pill ' + (CAT_TONE[k.category] || 'muted'), text: k.category }),
-        h('span', { text: (k.source === 'Customer' ? 'Requested by ' + (k.requester_name || 'the customer') : 'Opened by Farber') + ' · ' + fmtTime(k.created_at) })),
+        h('span', { text: (k.source === 'Customer' ? 'Requested by ' + (k.requester_name || 'the customer') : 'Opened by Farber') + ' · ' + fmtTime(k.created_at) }),
+        k.can_edit && k.warning_key ? h('a', { class: 'why', href: '#warnings', text: 'For the warning: ' + k.warning_key }) : null),
     ];
     if (k.can_edit) {
       const info = h('div', { class: 'panels' },

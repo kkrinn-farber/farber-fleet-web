@@ -1075,6 +1075,8 @@
     ['Connection and sensors', [
       { k: 'apn', label: 'Cellular APN', text: true, hint: 'From the SIM provider. Empty = network default.' },
       { k: 'prefer_lte', label: 'Use cellular even when Wi-Fi works', bool: ['No', 'Yes'] },
+      { k: 'wifi_on_battery', label: 'Wi-Fi when the tracker is on its backup battery', bool: ['Off (saves power)', 'On (for testing)'],
+        hint: 'Normally Wi-Fi turns off when the tracker isn’t being charged. Turn on for bench testing.' },
       { k: 'obd', label: 'Read the truck’s OBD-II port', bool: ['Off', 'On'], hint: 'Turn on once a CAN transceiver is wired in.' },
       { k: 'ap_password', label: 'New setup hotspot password', text: true, pw: true, truckOnly: true,
         hint: 'Leave empty to keep the password on the tracker’s sticker. 8 to 63 characters; the tracker switches on its next send.' }]],

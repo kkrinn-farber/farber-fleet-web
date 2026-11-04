@@ -73,6 +73,14 @@
   const NET_WARNINGS = ['No internet', 'On cellular with power on'];
   // Service (or an admin) gets the work-history / maintenance buttons
   const isServiceView = () => !!me && (isAdmin() || (viewAs || me.user_type) === 'service');
+  // Service, Sales and admins read tickets, warnings and shocks; only Service and admins change tickets
+  const canSeeTickets = () => isServiceView() || isSalesView();
+  // Sales never sees network warnings
+  const salesWarnings = (t) => {
+    if (!isSalesView() || !t.warnings) return t;
+    const w = String(t.warnings).split(', ').filter((x) => !NET_WARNINGS.includes(x)).join(', ');
+    return { ...t, warnings: w || null, health: w ? 'Warning' : 'Good' };
+  };
   const SERVICE_PAGES = { work: 'Maintenance history', schedule: 'Schedule maintenance', done: 'Add maintenance completed' };
   const typeLabel = (t) => TYPES[t] || 'Not set';
 
@@ -142,9 +150,9 @@
     document.querySelectorAll('.admin-only').forEach((el) => { el.hidden = !isAdmin(); });
     document.querySelectorAll('.staff-only').forEach((el) => { el.hidden = !signedIn || isCustomer(); });
     document.querySelectorAll('.not-sales').forEach((el) => { if (isSalesView()) el.hidden = true; });
-    document.querySelectorAll('.service-only').forEach((el) => { el.hidden = !signedIn || !isServiceView(); });
+    document.querySelectorAll('.service-only').forEach((el) => { el.hidden = !signedIn || !canSeeTickets(); });
     // Service users and admins find warnings and shocks under Service; Engineering keeps them under Fleet
-    document.querySelectorAll('.not-service').forEach((el) => { if (isServiceView()) el.hidden = true; });
+    document.querySelectorAll('.not-service').forEach((el) => { if (canSeeTickets()) el.hidden = true; });
     document.querySelectorAll('.customer-only').forEach((el) => { el.hidden = !signedIn || !isCustomer(); });
     $('view-as').hidden = !(signedIn && realAdmin());
     $('view-as').value = viewAs || '';
@@ -201,9 +209,9 @@
     // Customers only get their own trucks' customer pages and their account.
     if (isCustomer() && !['customer', 'account', 'mytrucks', 'request', 'ticket'].includes(r.page)) r = { page: 'mytrucks', id: null };
     // Service requests: Service users and admins
-    if ((r.page === 'requests' || r.page === 'newticket' || r.page === 'warnticket') && !isServiceView()) r = { page: 'trucks', id: null };
+    if ((r.page === 'requests' && !canSeeTickets()) || ((r.page === 'newticket' || r.page === 'warnticket') && !isServiceView())) r = { page: 'trucks', id: null };
     // Sales doesn't get the offline, shocks or warnings pages
-    if (isSalesView() && ['offline', 'shocks', 'warnings'].includes(r.page)) r = { page: 'trucks', id: null };
+    if (isSalesView() && r.page === 'offline') r = { page: 'trucks', id: null };
     markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page === 'warnticket' ? 'warnings' : r.page);
     window.scrollTo(0, 0);
     const adminPages = ['edit', 'new', 'users'];
@@ -421,14 +429,35 @@
       h('h1', { class: 'title', text: 'My account' }),
       h('div', { class: 'card' },
         h('div', { class: 'kv' }, h('span', { text: 'Email' }), h('b', { text: me.email })),
-        h('div', { class: 'kv' }, h('span', { text: 'Name' }), h('b', { text: me.name || '—' })),
+        h('div', { class: 'kv' }, h('span', { text: 'Name' }), h('b', { text: me.name || 'Not set' })),
         h('div', { class: 'kv' }, h('span', { text: 'Access' }), h('b', { text: me.role === 'admin' ? 'Admin (view, edit, add trucks, manage users)' : 'Viewer' }))),
+      nameForm(),
       form);
+  };
+  // your name is shown on ticket changes and notes
+  const nameForm = () => {
+    const nm = field('Your name', { autocomplete: 'name', maxlength: '80' });
+    nm.input.value = me.name || '';
+    const st = h('span', { class: 'status', 'aria-live': 'polite' });
+    const btn = h('button', { class: 'btn', type: 'submit', text: 'Save name' });
+    const f = h('form', { class: 'card form', novalidate: true }, h('h2', { text: 'Your name' }),
+      h('p', { class: 'note', text: 'Shown next to your ticket changes and notes.' }), nm.wrap, h('div', { class: 'actions' }, btn, st));
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const v = nm.input.value.trim();
+      if (!v) { st.className = 'status bad'; st.textContent = 'Type your name.'; return; }
+      btn.disabled = true; st.className = 'status busy'; st.textContent = 'Saving…';
+      try { const res = await rpc('web_set_my_name', { p_name: v }); me.name = res.name; setChrome(); st.className = 'status ok'; st.textContent = 'Saved.'; }
+      catch (err) { st.className = 'status bad'; st.textContent = friendly(err); }
+      btn.disabled = false;
+    });
+    return f;
   };
 
   // ---------- fleet list
   const renderFleet = async (r, token) => {
-    const [kpis, fleet, openReq] = await Promise.all([rpc('web_kpis'), rpc('web_fleet'), isServiceView() ? rpc('web_open_requests') : Promise.resolve(null)]);
+    const [kpis, fleet0, openReq] = await Promise.all([rpc('web_kpis'), rpc('web_fleet'), canSeeTickets() ? rpc('web_open_requests') : Promise.resolve(null)]);
+    const fleet = fleet0.map(salesWarnings);
     if (token !== renderToken) return;
     const k = kpis[0] || {};
     const warnings = fleet.filter((t) => t.health === 'Warning').length;
@@ -445,8 +474,8 @@
         h('span', { class: 'row-main' },
           h('span', { class: 'row-name' + (t.truck_name ? '' : ' unnamed'), text: t.truck_name || 'No name set' }),
           h('span', { class: 'row-sub', text: 'Last reported ' + ago(t.minutes_since_seen) + (t.near_city ? ' · near ' + [t.near_city, t.near_state].filter(Boolean).join(', ') : '') }),
-          t.warnings && !sales ? h('span', { class: 'why', text: t.warnings }) : null),
-        h('span', { class: 'row-side' }, statusPill(t.status), sales ? null : healthPill(t.health))))
+          t.warnings ? h('span', { class: 'why', text: t.warnings }) : null),
+        h('span', { class: 'row-side' }, statusPill(t.status), healthPill(t.health))))
         : [h('div', { class: 'empty', text: 'No trucks match that search.' })]));
     };
     search.addEventListener('input', draw);
@@ -456,10 +485,10 @@
       h('div', { class: 'tiles' },
         h('div', { class: 'tile' }, h('h3', { text: 'Trucks' }), h('span', { class: 'big', text: num(k.trucks_total) }), h('span', { class: 'sub', text: `${num(k.trucks_online)} online now` })),
         sales ? null : h('a', { class: 'tile', href: '#offline' }, h('h3', { text: 'Trucks offline' }), h('span', { class: 'big' + (k.trucks_offline ? ' bad' : ''), text: num(k.trucks_offline) }), h('span', { class: 'sub', text: 'No report for 10 minutes · open list →' })),
-        sales ? null : h('a', { class: 'tile', href: '#shocks' }, h('h3', { text: 'Shocks this week' }), h('span', { class: 'big', text: num(k.shocks_7d) }), h('span', { class: 'sub', text: `${num(k.shocks_24h)} in the last 24 hours · open list →` })),
+        h('a', { class: 'tile', href: '#shocks' }, h('h3', { text: 'Shocks this week' }), h('span', { class: 'big', text: num(k.shocks_7d) }), h('span', { class: 'sub', text: `${num(k.shocks_24h)} in the last 24 hours · open list →` })),
         openReq ? h('a', { class: 'tile', href: '#requests' }, h('h3', { text: 'Open service tickets' }), h('span', { class: 'big' + (openReq.urgent ? ' bad' : openReq.new ? ' warn' : ''), text: num(openReq.open) }),
           h('span', { class: 'sub', text: `${num(openReq.new)} new · ${num(openReq.urgent)} urgent · open list →` })) : null,
-        sales ? null : h('a', { class: 'tile', href: '#warnings' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance · open list →' }))),
+        h('a', { class: 'tile', href: '#warnings' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance · open list →' }))),
       h('div', { class: 'toolbar' }, search, count),
       list);
   };
@@ -575,7 +604,7 @@
   const renderTruck = async (r, token) => {
     const id = r.id;
     const [trows, maint, events, reqs] = await Promise.all([rpc('web_truck', { p_truck: id }), rpc('web_truck_maint', { p_truck: id }), rpc('web_truck_events', { p_truck: id }),
-      isServiceView() ? rpc('web_truck_requests', { p_truck: id }) : Promise.resolve(null)]);
+      canSeeTickets() ? rpc('web_truck_requests', { p_truck: id }) : Promise.resolve(null)]);
     if (token !== renderToken) return;
     const t = trows[0];
     if (!t) { app.replaceChildren(h('a', { class: 'back', href: '#trucks', text: '← All trucks' }), h('div', { class: 'empty', text: `There is no truck ${id}.` })); return; }
@@ -641,14 +670,17 @@
           h('div', { class: 'kv' }, h('span', { text: 'Email' }), t.contact_email ? h('a', { href: 'mailto:' + t.contact_email, text: t.contact_email }) : h('b', { text: '—' }))),
         panel('Farber team', team)];
     const customerBtn = h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' });
-    // Sales: location, truck details and the customer page only
+    // Sales: location, truck details, warnings, tickets and the customer page
     if (isSalesView()) {
       app.replaceChildren(
         h('a', { class: 'back', href: '#trucks', text: '← All trucks' }),
         h('h1', { class: 'title' }, t.truck_id, t.truck_name ? h('span', { class: 'sub', text: ' · ' + t.truck_name }) : null),
-        h('div', { class: 'meta' }, statusPill(t.status), h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }), customerBtn),
+        h('div', { class: 'meta' }, statusPill(t.status), healthPill(t.health), t.warnings ? h('a', { class: 'why', href: '#warnings', text: t.warnings }) : null,
+          h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }), customerBtn),
         h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
-        h('div', { class: 'panels' }, nowPanels[nowPanels.length - 1], ...detailPanels));
+        h('div', { class: 'panels' }, nowPanels[nowPanels.length - 1], ...detailPanels),
+        reqs ? h('div', { class: 'section-head' }, h('h2', { text: 'Service tickets' }), h('a', { class: 'note', href: '#requests', text: 'All service tickets →' })) : null,
+        reqs ? truckRequestsCard(reqs, false) : null);
       return;
     }
     app.replaceChildren(
@@ -692,8 +724,9 @@
   };
 
   const renderWarnings = async (r, token) => {
-    const [fleet, wt] = await Promise.all([rpc('web_fleet'), rpc('web_warning_tickets')]);
+    const [fleet0, wt] = await Promise.all([rpc('web_fleet'), rpc('web_warning_tickets')]);
     if (token !== renderToken) return;
+    const fleet = fleet0.map(salesWarnings);
     const rows = fleet.filter((t) => t.health === 'Warning')
       .map((t) => ({ ...t, list: String(t.warnings || '').split(', ').filter(Boolean)
         .map((w) => ({ w, tks: wt.filter((k) => k.truck_id === t.truck_id && (k.warning_key === w || k.overdue_key === w)) })) }))
@@ -1135,7 +1168,7 @@
     const notes = k.notes || [];
     return h('div', { class: 'card notes' },
       h('h2', { text: 'Team notes' }),
-      h('p', { class: 'note', text: 'Only Farber Service and admins see these. Status, schedule and assignment changes are added automatically.' }),
+      h('p', { class: 'note', text: 'Farber Service, Sales and admins see these; customers don’t. Every change to the ticket is added automatically with who made it.' }),
       notes.length ? h('ol', { class: 'note-list' }, notes.map((n) => h('li', { class: 'note-item' + (n.kind === 'change' ? ' change' : '') },
         h('div', { class: 'note-head' }, h('strong', { text: n.author || 'Farber' }), h('span', { class: 'note', text: fmtTime(n.at) })),
         h('div', { class: 'note-body', text: n.body }))))
@@ -1206,7 +1239,7 @@
     }
     if (token !== renderToken) return;
     const head = [
-      h('a', { class: 'back', href: k.can_edit ? '#truck-' + encodeURIComponent(k.truck_id) : '#customer-' + encodeURIComponent(k.truck_id), text: k.can_edit ? '← Truck ' + k.truck_id : '← Back to my truck' }),
+      h('a', { class: 'back', href: k.can_note ? '#truck-' + encodeURIComponent(k.truck_id) : '#customer-' + encodeURIComponent(k.truck_id), text: k.can_note ? '← Truck ' + k.truck_id : '← Back to my truck' }),
       h('p', { class: 'eyebrow', text: 'Service ticket #' + k.ticket_no }),
       h('h1', { class: 'title', text: k.title }),
       h('div', { class: 'meta' },
@@ -1214,9 +1247,9 @@
         h('span', { class: 'pill ' + tagTone(k, URG_TONE[k.urgency]), text: k.urgency }),
         h('span', { class: 'pill ' + tagTone(k, CAT_TONE[k.category]), text: k.category }),
         h('span', { text: (k.source === 'Customer' ? 'Requested by ' + (k.requester_name || 'the customer') : 'Opened by Farber') + ' · ' + fmtTime(k.created_at) }),
-        k.can_edit && k.warning_key ? h('a', { class: 'why', href: '#warnings', text: 'For the warning: ' + k.warning_key }) : null),
+        k.can_note && k.warning_key ? h('a', { class: 'why', href: '#warnings', text: 'For the warning: ' + k.warning_key }) : null),
     ];
-    if (k.can_edit) {
+    if (k.can_note) {
       const info = h('div', { class: 'panels' },
         panel('Truck', h('div', { class: 'kv' }, h('span', { text: 'Truck' }), h('a', { href: '#truck-' + encodeURIComponent(k.truck_id), text: k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '') })),
           kv('Company', k.company), kv('Main contact', k.contact_name),
@@ -1224,9 +1257,16 @@
           h('div', { class: 'kv' }, h('span', { text: 'Email' }), k.contact_email ? h('a', { href: 'mailto:' + k.contact_email, text: k.contact_email }) : h('b', { text: '—' }))),
         contactPanel(k),
         panel('Ticket', kv('Ticket number', '#' + k.ticket_no), kv('Opened', fmtTime(k.created_at)), kv('Requested by', k.requester_name || (k.source === 'Farber' ? 'Farber' : null)),
-          kv('Last updated', fmtTime(k.updated_at)), kv('Updated by', k.updated_by)));
-      app.replaceChildren(...head, statusActions(k), info,
-        h('div', { class: 'ticket-cols' }, h('div', null, h('div', { class: 'section-head' }, h('h2', { text: 'Ticket details' })), ticketEditor(k, {})), notesCard(k)));
+          kv('Last updated', fmtTime(k.updated_at)), kv('Updated by', k.updated_by_name || k.updated_by)));
+      // Sales reads the ticket; only Service and admins edit it
+      const readOnly = () => h('div', { class: 'panels one' },
+        panel('Request', kv('Type', k.category), kv('Urgency', k.urgency), k.details ? h('p', { class: 'ticket-text', text: k.details }) : h('p', { class: 'muted', text: 'No description.' })),
+        panel('Status and scheduling', kv('Status', k.status), kv('Scheduled for', k.scheduled_for ? fmtDay(k.scheduled_for) : null), kv('Assigned to', k.assigned_to)),
+        panel('Work done', kv('Done on', k.done_on ? fmtDay(k.done_on) : null), kv('Done by', k.done_by), kv('Where', k.location),
+          kv('Mileage', present(k.odometer_mi) ? num(k.odometer_mi) + ' mi' : null), kv('Generator hours', present(k.hours) ? num(k.hours, 1) + ' h' : null),
+          k.work_done ? h('p', { class: 'ticket-text', text: k.work_done }) : null));
+      app.replaceChildren(...head, k.can_edit ? statusActions(k) : h('p', { class: 'note', text: 'You can read this ticket and add team notes. Only Farber Service and admins can change it.' }), info,
+        h('div', { class: 'ticket-cols' }, h('div', null, h('div', { class: 'section-head' }, h('h2', { text: 'Ticket details' })), k.can_edit ? ticketEditor(k, {}) : readOnly()), notesCard(k)));
     } else {
       app.replaceChildren(...head,
         h('div', { class: 'panels' },
@@ -1343,7 +1383,7 @@
   const REQ_TONE = { New: 'accent', 'In progress': 'warn', Scheduled: 'ok', Done: 'muted', Cancelled: 'muted' };
   const URG_TONE = { Urgent: 'bad', Normal: 'muted', Low: 'muted' };
   // customers open their own tickets; staff need Service or admin
-  const canOpenTickets = () => isCustomer() || isServiceView();
+  const canOpenTickets = () => isCustomer() || canSeeTickets();
   // closed tickets (done or cancelled) show urgency and type in gray
   const tagTone = (k, tone) => (['Done', 'Cancelled'].includes(k.status) ? 'muted' : tone || 'muted');
   const renderRequests = async (r, token) => {
@@ -1382,7 +1422,7 @@
       h('p', { class: 'eyebrow', text: 'Service' }),
       h('h1', { class: 'title', text: 'Service tickets' }),
       h('p', { class: 'lede', text: 'Every job has a ticket: customer requests, scheduled work and finished maintenance. Open tickets come first, most urgent at the top. Closed tickets from the last 90 days are here too; older ones are in each truck’s Maintenance history.' }),
-      h('div', { class: 'actions' }, h('a', { class: 'btn', href: '#newticket', text: 'New ticket' })),
+      isServiceView() ? h('div', { class: 'actions' }, h('a', { class: 'btn', href: '#newticket', text: 'New ticket' })) : null,
       h('div', { class: 'tiles' },
         h('div', { class: 'tile' }, h('h3', { text: 'New' }), h('span', { class: 'big' + (n('New') ? ' warn' : ''), text: num(n('New')) }), h('span', { class: 'sub', text: 'Waiting for Farber' })),
         h('div', { class: 'tile' }, h('h3', { text: 'Urgent and open' }), h('span', { class: 'big' + (urgent ? ' bad' : ''), text: num(urgent) }), h('span', { class: 'sub', text: 'Marked urgent by the customer' })),

@@ -82,3 +82,6 @@ their own trucks and see them read-only.
 On a ticket, Service users and admins have quick buttons: **Start work** (New/Scheduled → In progress), **Mark done**
 (asks for the date and what was done), **Cancel ticket** and **Reopen ticket** (both ask for a reason). Reopen
 works on any closed ticket, however old. Every change is written to the team notes.
+**Sales** sees service tickets, warnings and shocks (menu → Service) and can add team notes, but can't change, close,
+reopen or create tickets. Every ticket change is written to the team notes with the person's name; set your name
+under My account.

@@ -319,3 +319,4 @@ fieldset > .note { margin: -2px 0 10px; }
 .copy-val.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: .06em; }
 .copy-msg summary { cursor: pointer; color: var(--accent); font-size: 14px; margin: 4px 0; }
 @media (max-width: 560px) { .copy-row { grid-template-columns: minmax(0, 1fr) auto; } .copy-label { grid-column: 1 / -1; } .copy-row .status { grid-column: 1 / -1; } }
+.panels.one { grid-template-columns: minmax(0, 1fr); }

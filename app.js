@@ -252,11 +252,44 @@
     return { wrap: h('div', { class: 'field' }, h('label', { for: id, text: label }), input), input };
   };
 
+  // password box with a Show / Hide button
+  const pwField = (label, autocomplete) => {
+    const f = field(label, { type: 'password', autocomplete, required: true, minlength: '8' });
+    const btn = h('button', { type: 'button', class: 'pw-toggle', 'aria-pressed': 'false', 'aria-label': 'Show password', text: 'Show' });
+    btn.addEventListener('click', () => {
+      const show = f.input.type === 'password';
+      f.input.type = show ? 'text' : 'password';
+      btn.textContent = show ? 'Hide' : 'Show';
+      btn.setAttribute('aria-pressed', String(show));
+      btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      f.input.focus();
+    });
+    const box = h('div', { class: 'pw-wrap' });
+    f.input.replaceWith(box);
+    box.append(f.input, btn);
+    return f;
+  };
+  // live "passwords match" line under the confirm box
+  const matchHint = (a, b) => {
+    const hint = h('p', { class: 'pw-hint', 'aria-live': 'polite' });
+    const check = () => {
+      if (!b.input.value) { hint.textContent = ''; hint.className = 'pw-hint'; return; }
+      const ok = a.input.value === b.input.value;
+      hint.className = 'pw-hint ' + (ok ? 'ok' : 'bad');
+      hint.textContent = ok ? '✓ Passwords match' : '✗ Passwords don’t match yet';
+    };
+    a.input.addEventListener('input', check); b.input.addEventListener('input', check);
+    b.wrap.append(hint);
+    return check;
+  };
+
   const renderSignIn = () => {
     let mode = 'signin';
     const status = h('p', { class: 'status', 'aria-live': 'polite' });
     const email = field('Email', { type: 'email', autocomplete: 'email', required: true });
-    const pass = field('Password', { type: 'password', autocomplete: 'current-password', required: true, minlength: '8' });
+    const pass = pwField('Password', 'current-password');
+    const pass2 = pwField('Type the password again', 'new-password');
+    const recheck = matchHint(pass, pass2);
     const code = field('Invite code (from your admin)', { autocomplete: 'off', placeholder: 'e.g. 7KQ2-MX9D-4HTP', spellcheck: 'false' });
     const help = h('p', { class: 'note' });
     const submit = h('button', { class: 'btn', type: 'submit' });
@@ -267,6 +300,9 @@
       tabIn.setAttribute('aria-selected', String(m === 'signin'));
       tabNew.setAttribute('aria-selected', String(m === 'new'));
       code.wrap.hidden = m !== 'new';
+      pass2.wrap.hidden = m !== 'new';
+      if (m !== 'new') pass2.input.value = '';
+      recheck();
       pass.input.autocomplete = m === 'new' ? 'new-password' : 'current-password';
       pass.wrap.querySelector('label').textContent = m === 'new' ? 'Choose a password (8 or more characters)' : 'Password';
       submit.textContent = m === 'new' ? 'Create my sign-in' : 'Sign in';
@@ -278,13 +314,14 @@
     tabIn.addEventListener('click', () => setMode('signin'));
     tabNew.addEventListener('click', () => setMode('new'));
     const form = h('form', { class: 'card', novalidate: true },
-      h('div', { class: 'tabs', role: 'tablist' }, tabIn, tabNew), email.wrap, pass.wrap, code.wrap, submit, status, help);
+      h('div', { class: 'tabs', role: 'tablist' }, tabIn, tabNew), email.wrap, pass.wrap, pass2.wrap, code.wrap, submit, status, help);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const em = clean(email.input.value).toLowerCase();
       const pw = pass.input.value;
       if (!EMAIL_OK.test(em)) { status.className = 'status bad'; status.textContent = 'Enter your email address.'; return; }
       if (pw.length < 8) { status.className = 'status bad'; status.textContent = 'Passwords are at least 8 characters.'; return; }
+      if (mode === 'new' && pw !== pass2.input.value) { status.className = 'status bad'; status.textContent = 'The two passwords don’t match.'; pass2.input.focus(); return; }
       if (mode === 'new' && clean(code.input.value).replace(/[^A-Za-z0-9]/g, '').length < 12) {
         status.className = 'status bad'; status.textContent = 'Enter the 12-character invite code.'; return;
       }
@@ -363,8 +400,9 @@
 
   const renderAccount = async () => {
     const status = h('p', { class: 'status', 'aria-live': 'polite' });
-    const p1 = field('New password (8 or more characters)', { type: 'password', autocomplete: 'new-password' });
-    const p2 = field('New password again', { type: 'password', autocomplete: 'new-password' });
+    const p1 = pwField('New password (8 or more characters)', 'new-password');
+    const p2 = pwField('New password again', 'new-password');
+    const recheck = matchHint(p1, p2);
     const submit = h('button', { class: 'btn', type: 'submit', text: 'Change password' });
     const form = h('form', { class: 'card form' }, h('h2', { text: 'Change password' }), p1.wrap, p2.wrap, h('div', { class: 'actions' }, submit, status));
     form.addEventListener('submit', async (e) => {
@@ -376,7 +414,7 @@
       const { error } = await sb.auth.updateUser({ password: p1.input.value });
       submit.disabled = false;
       if (error) { status.className = 'status bad'; status.textContent = error.message; return; }
-      p1.input.value = ''; p2.input.value = '';
+      p1.input.value = ''; p2.input.value = ''; recheck();
       status.className = 'status ok'; status.textContent = 'Password changed.';
     });
     app.replaceChildren(
@@ -1446,21 +1484,43 @@
 
     // ---- invite code box (shared)
     const codeBox = h('div', { class: 'notice good', hidden: true });
+    const copyText = async (text, el, statusEl) => {
+      try { await navigator.clipboard.writeText(text); statusEl.textContent = 'Copied'; }
+      catch (e) { const rg = document.createRange(); rg.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(rg); statusEl.textContent = 'Selected: press Copy'; }
+      setTimeout(() => { statusEl.textContent = ''; }, 2500);
+    };
     const showCode = (res, what) => {
       const site = location.origin + location.pathname;
-      const msg = `You've been added to Farber Fleet.\nSite: ${site}\nPress "First time here", use ${res.email}, choose a password, and enter this code: ${res.code}\nThe code works until ${fmtDay(res.expires)}.`;
-      const copyStatus = h('span', { class: 'status' });
+      const msg = [
+        'You’ve been added to Farber Fleet.',
+        '',
+        'Website:',
+        site,
+        '',
+        'Email:',
+        res.email,
+        '',
+        'Invite code:',
+        res.code,
+        '',
+        'Open the website, press "First time here", enter your email, choose a password and type the invite code.',
+        `The code works once, until ${fmtDay(res.expires)}.`,
+      ].join('\n');
+      const row = (label, value, mono) => {
+        const val = h('span', { class: 'copy-val' + (mono ? ' mono' : ''), text: value });
+        const st = h('span', { class: 'status ok' });
+        return h('div', { class: 'copy-row' }, h('span', { class: 'copy-label', text: label }), val,
+          h('button', { class: 'btn small ghost', type: 'button', text: 'Copy', onclick: () => copyText(value, val, st) }), st);
+      };
       const pre = h('pre', { class: 'code', text: msg });
+      const allStatus = h('span', { class: 'status ok' });
       codeBox.hidden = false;
       codeBox.replaceChildren(
         h('strong', { text: `${what} ${res.email}` }),
-        h('p', null, 'Invite code: ', h('span', { class: 'codebig', text: res.code })),
-        h('p', { class: 'note', text: 'Give this message to the person (text, email or in person). The code is shown only now and works once.' }),
-        pre,
-        h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', text: 'Copy message', onclick: async () => {
-          try { await navigator.clipboard.writeText(msg); copyStatus.textContent = 'Copied'; }
-          catch (e) { const rg = document.createRange(); rg.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(rg); copyStatus.textContent = 'Selected: use your device’s Copy'; }
-        } }), copyStatus));
+        h('p', { class: 'note', text: 'Send these to the person (text, email or in person). The code is shown only now and works once.' }),
+        h('div', { class: 'copy-rows' }, row('Website', site), row('Email', res.email), row('Invite code', res.code, true)),
+        h('details', { class: 'copy-msg' }, h('summary', { text: 'Whole message' }), pre),
+        h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', text: 'Copy whole message', onclick: () => copyText(msg, pre, allStatus) }), allStatus));
       window.scrollTo(0, 0);
     };
 

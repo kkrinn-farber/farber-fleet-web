@@ -267,3 +267,23 @@ fieldset > .note { margin: -2px 0 10px; }
 .warn-name { color: var(--warn); font-weight: 600; }
 .warn-ticket { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .warn-tk { display: inline-flex; gap: 6px; align-items: center; }
+/* trucks with warnings */
+.warn-cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 36rem), 1fr)); align-items: start; }
+.warn-card { padding: 0; overflow: hidden; }
+.wc-head { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.wc-truck { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--fg); text-decoration: none; min-width: 0; }
+.wc-truck:hover span:last-child { text-decoration: underline; }
+.wc-meta { display: inline-flex; align-items: center; gap: 10px; }
+.wc-list { list-style: none; margin: 0; padding: 4px 18px 6px; }
+.wc-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 19rem); gap: 8px 16px; align-items: center; padding: 11px 0; }
+.wc-row + .wc-row { border-top: 1px solid var(--line); }
+.wc-warn { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; color: var(--warn); }
+.wc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+.wc-row.has-ticket .wc-warn { color: var(--fg); font-weight: 500; }
+.wc-row.has-ticket .wc-dot { background: var(--ok); }
+.wc-tickets { display: grid; gap: 6px; }
+.wc-ticket { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.wc-title { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wc-open { justify-self: start; }
+@media (max-width: 560px) { .wc-row { grid-template-columns: 1fr; } .wc-head { padding: 12px 14px; } .wc-list { padding: 2px 14px 4px; } }
+.wc-truck .plate { font-size: 1.02rem; }

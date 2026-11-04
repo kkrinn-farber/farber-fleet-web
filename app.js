@@ -655,29 +655,44 @@
     const [fleet, wt] = await Promise.all([rpc('web_fleet'), rpc('web_warning_tickets')]);
     if (token !== renderToken) return;
     const rows = fleet.filter((t) => t.health === 'Warning')
-      .map((t) => ({ ...t, list: String(t.warnings || '').split(', ').filter(Boolean) }))
+      .map((t) => ({ ...t, list: String(t.warnings || '').split(', ').filter(Boolean)
+        .map((w) => ({ w, tks: wt.filter((k) => k.truck_id === t.truck_id && (k.warning_key === w || k.overdue_key === w)) })) }))
       .sort((a, b) => b.list.length - a.list.length || String(a.truck_id).localeCompare(String(b.truck_id)));
+    const all = rows.flatMap((t) => t.list);
+    const needs = all.filter((x) => !x.tks.length).length;
+    let onlyNeeds = false;
+    const box = h('div', { class: 'warn-cards' });
+    const ticketCell = (t, x) => {
+      if (x.tks.length) return h('div', { class: 'wc-tickets' }, x.tks.map((k) => h('div', { class: 'wc-ticket' },
+        canOpenTickets() ? ticketLink(k.ticket_no) : h('span', { class: 'ticket-no', text: '#' + k.ticket_no }),
+        h('span', { class: 'pill ' + (REQ_TONE[k.status] || 'muted'), text: k.status }),
+        h('span', { class: 'wc-title', text: k.title, title: k.title }))));
+      return isServiceView()
+        ? h('a', { class: 'btn small ghost wc-open', href: '#warnticket-' + encodeURIComponent(t.truck_id) + '/' + encodeURIComponent(x.w), text: '+ Open ticket' })
+        : h('span', { class: 'note', text: 'No ticket yet' });
+    };
+    const draw = () => {
+      const shown = rows.map((t) => ({ ...t, list: onlyNeeds ? t.list.filter((x) => !x.tks.length) : t.list })).filter((t) => t.list.length);
+      box.replaceChildren(...(shown.length ? shown.map((t) => h('section', { class: 'card warn-card' },
+        h('header', { class: 'wc-head' },
+          h('a', { class: 'wc-truck', href: '#truck-' + encodeURIComponent(t.truck_id) }, h('span', { class: 'plate', text: t.truck_id }), h('span', { text: t.truck_name || 'No name set' })),
+          h('div', { class: 'wc-meta' }, statusPill(t.status), h('span', { class: 'note', text: t.last_seen ? 'Last report ' + ago(t.minutes_since_seen) : 'Never reported' }))),
+        h('ul', { class: 'wc-list' }, t.list.map((x) => h('li', { class: 'wc-row' + (x.tks.length ? ' has-ticket' : '') },
+          h('span', { class: 'wc-warn' }, h('span', { class: 'wc-dot', 'aria-hidden': 'true' }), x.w),
+          ticketCell(t, x))))))
+        : [h('div', { class: 'empty', text: onlyNeeds ? 'Every warning has a ticket.' : 'No warnings. Every truck is good.' })]));
+    };
+    const toggle = h('div', { class: 'seg', role: 'group', 'aria-label': 'Show' },
+      [['all', `All warnings (${all.length})`], ['needs', `Needs a ticket (${needs})`]].map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String((k === 'needs') === onlyNeeds), text: l, onclick: (e) => {
+        onlyNeeds = k === 'needs'; toggle.querySelectorAll('button').forEach((b2) => b2.setAttribute('aria-pressed', String(b2 === e.currentTarget))); draw();
+      } })));
+    draw();
     app.replaceChildren(
       h('a', { class: 'back', href: '#trucks', text: '← All trucks' }),
       h('h1', { class: 'title', text: `Trucks with warnings (${rows.length})` }),
-      h('p', { class: 'lede', text: 'Every truck with something that needs attention, most warnings first. Each warning shows its open ticket, or a button to open one. Open a truck to see the details.' }),
-      rows.length ? h('div', { class: 'card scroll' }, h('table', { class: 'stack' },
-        h('thead', null, h('tr', null, ['Truck', 'Warnings and tickets', 'Status', 'Last update'].map((x) => h('th', { text: x })))),
-        h('tbody', null, rows.map((t) => h('tr', null,
-          h('td', { class: 'first', 'data-label': 'Truck' }, h('a', { href: '#truck-' + encodeURIComponent(t.truck_id), text: t.truck_id + (t.truck_name ? ' · ' + t.truck_name : '') })),
-          h('td', { 'data-label': 'Warnings' }, h('ul', { class: 'warn-list with-tickets' }, t.list.map((w) => {
-            const tks = wt.filter((k) => k.truck_id === t.truck_id && (k.warning_key === w || k.overdue_key === w));
-            return h('li', null, h('span', { class: 'warn-name', text: w }),
-              h('span', { class: 'warn-ticket' }, tks.length
-                ? tks.map((k) => h('span', { class: 'warn-tk' }, canOpenTickets() ? ticketLink(k.ticket_no) : h('span', { class: 'ticket-no', text: '#' + k.ticket_no }),
-                    ' ', h('span', { class: 'pill ' + (REQ_TONE[k.status] || 'muted'), text: k.status })))
-                : isServiceView()
-                  ? h('a', { class: 'btn small', href: '#warnticket-' + encodeURIComponent(t.truck_id) + '/' + encodeURIComponent(w), text: 'Open ticket' })
-                  : h('span', { class: 'note', text: 'No ticket' })));
-          }))),
-          h('td', { 'data-label': 'Status' }, statusPill(t.status)),
-          h('td', { 'data-label': 'Last update', text: t.last_seen ? `${fmtTime(t.last_seen)} (${ago(t.minutes_since_seen)})` : 'Never reported' }))))))
-        : h('div', { class: 'empty', text: 'No warnings. Every truck is good.' }));
+      h('p', { class: 'lede', text: `${all.length} ${all.length === 1 ? 'warning' : 'warnings'} on ${rows.length} ${rows.length === 1 ? 'truck' : 'trucks'}. ${needs ? `${needs} still ${needs === 1 ? 'needs' : 'need'} a ticket.` : 'Every warning has a ticket.'}` }),
+      rows.length ? h('div', { class: 'toolbar' }, toggle) : null,
+      box);
   };
 
   const renderOffline = async (r, token) => {

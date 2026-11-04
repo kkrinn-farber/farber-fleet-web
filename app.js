@@ -558,11 +558,43 @@
   const sysTanks = (sy) => ['fresh', 'gray', 'black'].filter((k) => sy.plumbing && sy.plumbing[k]);
   const sysWater = (sy) => sysTanks(sy).length > 0 || !!(sy.plumbing && sy.plumbing.jug);
   const listText = (a) => (a && a.length ? a.join(', ') : 'None');
+  const BATTERY_TYPES = ['Lithium', 'AGM', 'Flooded lead-acid', 'Other'];
+  const batteryText = (b) => (b && b.type ? b.type + (b.ah ? ` · ${num(b.ah)} Ah` : '') : 'None');
+  // What a ticket can be about: the truck's own systems, then general areas
+  const GENERAL_SYSTEMS = ['Electrical', 'Cabinetry', 'Mechanical', 'Networking', 'Audio/Video', 'Electric step', 'Other'];
+  const truckSystemList = (sy) => {
+    if (!sy) return [];
+    return [sy.engine ? 'Truck engine' : null, sysWater(sy) ? 'Plumbing' : null, sy.jacks ? 'Jacks' : null, sy.solar ? 'Solar' : null,
+      sy.shore_amps ? 'Shore power' : null, sy.battery && sy.battery.type ? 'Off-grid batteries' : null,
+      ...(sy.slideouts || []).map((n) => 'Slideout: ' + n), ...(sy.generators || []).map((n) => 'Generator: ' + n),
+      ...(sy.awnings || []).map((n) => 'Awning: ' + n)].filter(Boolean);
+  };
+  // fills a <select> with the choices; keeps a saved value even if the truck no longer lists it
+  const fillSystemSelect = (sel, sy, current, emptyText) => {
+    const mine = truckSystemList(sy);
+    const known = new Set([...mine, ...GENERAL_SYSTEMS]);
+    sel.replaceChildren(h('option', { value: '', text: emptyText || '— Not set —' }),
+      mine.length ? h('optgroup', { label: 'This truck' }, mine.map((x) => h('option', { value: x, text: x }))) : null,
+      h('optgroup', { label: 'General' }, GENERAL_SYSTEMS.map((x) => h('option', { value: x, text: x }))),
+      current && !known.has(current) ? h('option', { value: current, text: current }) : null);
+    sel.value = current || '';
+  };
+  // the system a warning (or an oil change) is about
+  const systemForWarning = (w, sy) => {
+    const g = (sy && sy.generators) || [];
+    if (!w) return '';
+    if (w === 'Generator' || w === 'Generator oil change overdue') return g[0] ? 'Generator: ' + g[0] : '';
+    if (w === 'Generator 2') return g[1] ? 'Generator: ' + g[1] : '';
+    if (['Check engine', 'Fault codes', 'Engine oil change overdue'].includes(w)) return 'Truck engine';
+    if (w === 'Jacks') return 'Jacks';
+    if (['Not reporting', 'No internet', 'On cellular with power on', 'Tracker asleep (low battery)'].includes(w)) return 'Networking';
+    return '';
+  };
   const systemsPanel = (sy) => sy ? panel('Systems',
     kv('Truck engine', sy.engine ? 'Yes' : 'No (trailer)'),
     kv('Water', [...sysTanks(sy).map((k) => k[0].toUpperCase() + k.slice(1) + ' tank'), sy.plumbing && sy.plumbing.jug ? 'Jug system' : null].filter(Boolean).join(', ') || 'None'),
     kv('Leveling jacks', sy.jacks ? 'Yes' : 'No'), kv('Solar', sy.solar ? 'Yes' : 'No'),
-    kv('Shore power', sy.shore_amps ? sy.shore_amps + ' A' : 'None'),
+    kv('Shore power', sy.shore_amps ? sy.shore_amps + ' A' : 'None'), kv('Off-grid batteries', batteryText(sy.battery)),
     kv('Slideouts', listText(sy.slideouts)), kv('Generators', listText(sy.generators)), kv('Awnings', listText(sy.awnings))) : null;
 
   // shared by the staff truck page and the customer page (cust = hide IP and firmware)
@@ -576,6 +608,7 @@
       if (k === 'solar') return !!sy.solar;
       if (k === 'jacks') return !!sy.jacks;
       if (k === 'plumbing') return sysWater(sy);
+      if (k === 'aux') return !!(sy.battery && sy.battery.type);
       return t['has_' + k];
     };
     const engine = sy ? !!sy.engine : true;
@@ -613,8 +646,9 @@
         truckMaint.flatMap(dueRows)),
       panel('Batteries',
         kv('Chassis', num(t.chassis_v, 1), ' V', tone('chassis_v', t.chassis_v)),
-        needs('aux') && kv('Aux', num(t.aux_v, 1), ' V', tone('aux_v', t.aux_v)),
-        needs('aux') && kv('Aux current', num(t.aux_a, 1), ' A'),
+        needs('aux') && kv(sy ? 'Off-grid' : 'Aux', num(t.aux_v, 1), ' V', tone('aux_v', t.aux_v)),
+        needs('aux') && kv(sy ? 'Off-grid current' : 'Aux current', num(t.aux_a, 1), ' A'),
+        needs('aux') && sy && sy.battery && sy.battery.ah ? kv('Off-grid bank', batteryText(sy.battery)) : null,
         kv('Tracker battery', num(t.board_v, 2), ' V', tone('board_v', t.board_v))),
       needs('generator') && panel(genNames[0] || 'Generator',
         kv('Generator', t.generator, null, t.generator === 'Error' ? 'bad' : null), kv('Error code', t.gen_error_code),
@@ -1183,11 +1217,20 @@
     };
     const sysEngine = chk('Truck engine', sys0.engine, '(off for trailers)');
     const sysTank = { fresh: chk('Fresh tank', sys0.plumbing && sys0.plumbing.fresh), gray: chk('Gray tank', sys0.plumbing && sys0.plumbing.gray),
-      black: chk('Black tank', sys0.plumbing && sys0.plumbing.black), jug: chk('Jug system', sys0.plumbing && sys0.plumbing.jug, '(fresh water from jugs)') };
+      black: chk('Black tank', sys0.plumbing && sys0.plumbing.black), jug: chk('Jug system', sys0.plumbing && sys0.plumbing.jug) };
+    sysTank.jug.wrap.title = 'Fresh water from jugs instead of a tank';
     const sysJacks = chk('Leveling jacks', sys0.jacks);
     const sysSolar = chk('Solar', sys0.solar);
     const shoreSel = h('select', { id: 's-shore' }, SHORE_AMPS.map((a) => h('option', { value: String(a), text: a ? a + ' A' : 'None' })));
     shoreSel.value = String(sys0.shore_amps || 0);
+    // off-grid battery system: type and capacity
+    const batSel = h('select', { id: 's-battery' }, h('option', { value: '', text: 'None' }), BATTERY_TYPES.map((x) => h('option', { value: x, text: x })));
+    batSel.value = (sys0.battery && sys0.battery.type) || '';
+    const batAh = h('input', { type: 'number', id: 's-battery-ah', min: '0', max: '20000', step: '10', placeholder: 'Capacity', 'aria-label': 'Battery capacity in amp-hours',
+      value: sys0.battery && sys0.battery.ah ? String(sys0.battery.ah) : '' });
+    const batAhWrap = h('div', { class: 'with-unit' }, batAh, h('span', { class: 'unit-tag', text: 'Ah' }));
+    const syncBat = () => { batAhWrap.hidden = !batSel.value; };
+    batSel.addEventListener('change', syncBat); syncBat();
     // a count (0..max) and a name box for each unit
     const named = (label, unit, max, names) => {
       const id = 's-' + unit.toLowerCase();
@@ -1212,6 +1255,7 @@
     const sysGet = () => ({ engine: sysEngine.box.checked,
       plumbing: Object.fromEntries(Object.entries(sysTank).map(([k, c]) => [k, c.box.checked])),
       jacks: sysJacks.box.checked, solar: sysSolar.box.checked, shore_amps: Number(shoreSel.value),
+      battery: batSel.value ? { type: batSel.value, ah: batAh.value ? Math.round(Number(batAh.value)) : null } : null,
       slideouts: sysSlides.get(), generators: sysGens.get(), awnings: sysAwnings.get() });
     const systemsSet = h('fieldset', null, h('legend', { text: 'Systems' }),
       h('p', { class: 'note', style: 'margin-bottom:8px', text: 'What this truck has. It decides what the website shows and what the truck’s tracker reads and sends.' }),
@@ -1219,7 +1263,8 @@
         h('div', { class: 'sys-group' }, h('span', { class: 'sys-head', text: 'Vehicle' }), sysEngine.wrap),
         h('div', { class: 'sys-group' }, h('span', { class: 'sys-head', text: 'Plumbing' }), h('div', { class: 'checks' }, Object.values(sysTank).map((c) => c.wrap))),
         h('div', { class: 'sys-group' }, h('span', { class: 'sys-head', text: 'Equipment' }), h('div', { class: 'checks' }, sysJacks.wrap, sysSolar.wrap)),
-        h('div', { class: 'sys-group' }, h('label', { class: 'sys-head', for: 's-shore', text: 'Shore power' }), shoreSel)),
+        h('div', { class: 'sys-group' }, h('label', { class: 'sys-head', for: 's-shore', text: 'Shore power' }), shoreSel),
+        h('div', { class: 'sys-group' }, h('label', { class: 'sys-head', for: 's-battery', text: 'Off-grid batteries' }), batSel, batAhWrap)),
       h('p', { class: 'note sys-sub', text: 'Pick how many, then name each one (the names show on the truck page).' }),
       h('div', { class: 'sys-row' }, sysSlides.wrap, sysGens.wrap, sysAwnings.wrap));
 
@@ -1272,6 +1317,7 @@
       const problems = [];
       if (v.build_date && v.delivery_date && v.delivery_date < v.build_date) problems.push('Delivery date is before the build date.');
       if (v.contact_email && !EMAIL_OK.test(v.contact_email)) problems.push('The email address doesn’t look right.');
+      if (batSel.value && batAh.value && !(Number(batAh.value) >= 0 && Number(batAh.value) <= 20000)) problems.push('Battery capacity must be 0 to 20,000 Ah.');
       let newId = null;
       if (isNew) {
         newId = clean(idField.input.value);
@@ -1457,6 +1503,7 @@
     const f = {
       title: inF('Title', v.title, { maxlength: '160', placeholder: 'What needs doing' }),
       category: selF('Type', TICKET_CATS, v.category || 'Repair'),
+      system: selF('System', [], ''),
       urgency: selF('Urgency', URGENCIES, v.urgency || 'Normal'),
       details: areaF('Request / problem', v.details, { maxlength: '4000' }),
       status: selF('Status', REQ_STATUS, v.status || 'New'),
@@ -1477,6 +1524,10 @@
     };
     f.truck_location.wrap.classList.add('wide');
     f.type_code.wrap.title = 'Oil changes reset the due date on the truck page';
+    // System choices follow the truck (and change when another truck is picked)
+    const sysFor = (id) => (id && opts.trucks ? ((opts.trucks.find((x) => x.truck_id === id) || {}).systems) : null) || v.truck_systems || null;
+    fillSystemSelect(f.system.input, sysFor(v.truck_id), v.system || '');
+    if (truckSel) truckSel.input.addEventListener('change', () => fillSystemSelect(f.system.input, sysFor(truckSel.input.value), f.system.input.value));
     const snap = () => JSON.stringify(Object.fromEntries(Object.entries(f).map(([key, x]) => [key, x.input.value]).concat([['truck', truckSel ? truckSel.input.value : '']])));
     const start = snap();
     unsaved.dirty = () => snap() !== start;
@@ -1486,7 +1537,7 @@
     const form = h('form', { class: 'card form ticket-form', novalidate: true },
       h('fieldset', null, h('legend', { text: 'Request' }), h('div', { class: 'grid' },
         truckSel ? (truckSel.wrap.classList.add('wide'), truckSel.wrap) : null,
-        (f.title.wrap.classList.add('wide'), f.title.wrap), f.category.wrap, f.urgency.wrap, f.details.wrap)),
+        (f.title.wrap.classList.add('wide'), f.title.wrap), f.category.wrap, f.system.wrap, f.urgency.wrap, f.details.wrap)),
       h('fieldset', null, h('legend', { text: 'Truck location and contact' }), h('div', { class: 'grid' },
         f.truck_location.wrap, f.req_contact_name.wrap, f.req_contact_role.wrap, f.req_contact_phone.wrap, f.req_contact_email.wrap)),
       h('fieldset', null, h('legend', { text: 'Status and scheduling' }), h('div', { class: 'grid' },
@@ -1600,6 +1651,7 @@
     // follow "View as": an admin viewing as Sales gets the Sales view; as Engineering, no ticket
     if (!isCustomer() && !canSeeTickets()) { app.replaceChildren(h('div', { class: 'empty', text: 'You can’t open this ticket.' })); return; }
     if (k.can_edit && !isServiceView()) k.can_edit = false;
+    k.truck_systems = k.truck_systems || null;
     const head = [
       h('a', { class: 'back', href: k.can_note ? '#truck-' + encodeURIComponent(k.truck_id) : '#customer-' + encodeURIComponent(k.truck_id), text: k.can_note ? '← Truck ' + k.truck_id : '← Back to my truck' }),
       h('p', { class: 'eyebrow', text: 'Service ticket #' + k.ticket_no }),
@@ -1608,6 +1660,7 @@
         h('span', { class: 'pill ' + (REQ_TONE[k.status] || 'muted'), text: k.status }),
         h('span', { class: 'pill ' + tagTone(k, URG_TONE[k.urgency]), text: k.urgency }),
         h('span', { class: 'pill ' + tagTone(k, CAT_TONE[k.category]), text: k.category }),
+        k.system ? h('span', { class: 'pill muted', text: k.system }) : null,
         h('span', { text: (k.source === 'Customer' ? 'Requested by ' + (k.requester_name || 'the customer') : 'Opened by Farber') + ' · ' + fmtTime(k.created_at) }),
         k.can_note && k.warning_key ? h('a', { class: 'why', href: '#warnings', text: 'For the warning: ' + k.warning_key }) : null),
     ];
@@ -1622,7 +1675,7 @@
           kv('Last updated', fmtTime(k.updated_at)), kv('Updated by', k.updated_by_name || k.updated_by)));
       // Sales reads the ticket; only Service and admins edit it
       const readOnly = () => h('div', { class: 'panels one' },
-        panel('Request', kv('Type', k.category), kv('Urgency', k.urgency), k.details ? h('p', { class: 'ticket-text', text: k.details }) : h('p', { class: 'muted', text: 'No description.' })),
+        panel('Request', kv('Type', k.category), kv('System', k.system), kv('Urgency', k.urgency), k.details ? h('p', { class: 'ticket-text', text: k.details }) : h('p', { class: 'muted', text: 'No description.' })),
         panel('Status and scheduling', kv('Status', k.status), kv('Scheduled for', k.scheduled_for ? fmtDay(k.scheduled_for) : null), kv('Assigned to', k.assigned_to)),
         panel('Work done', kv('Done on', k.done_on ? fmtDay(k.done_on) : null), kv('Done by', k.done_by), kv('Where', k.location),
           kv('Mileage', present(k.odometer_mi) ? num(k.odometer_mi) + ' mi' : null), kv('Generator hours', present(k.hours) ? num(k.hours, 1) + ' h' : null),
@@ -1632,7 +1685,7 @@
     } else {
       app.replaceChildren(...head,
         h('div', { class: 'panels' },
-          panel('Your request', kv('Type', k.category), kv('Urgency', k.urgency), kv('Sent', fmtTime(k.created_at)), kv('Truck', k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '')),
+          panel('Your request', kv('Type', k.category), kv('Part of the truck', k.system), kv('Urgency', k.urgency), kv('Sent', fmtTime(k.created_at)), kv('Truck', k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '')),
             k.details ? h('p', { class: 'ticket-text', text: k.details }) : null),
           contactPanel(k),
           panel('Status', kv('Status', k.status, null, k.status === 'Done' ? 'ok' : null), kv('Scheduled for', k.scheduled_for ? fmtDay(k.scheduled_for) : null), kv('Assigned to', k.assigned_to)),
@@ -1649,14 +1702,15 @@
     if (token !== renderToken) return;
     const t = trows[0];
     if (r.id && !t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
-    const p = { ...preset, truck_id: t ? t.truck_id : null };
+    const p = { ...preset, truck_id: t ? t.truck_id : null, truck_systems: t ? t.systems : null };
+    if (t && !p.system) p.system = systemForWarning(preset.warning_key, t.systems);
     if (p.status === 'Done') { p.done_on = todayIso(); p.odometer_mi = t ? t.odometer_mi : null; p.hours = t ? t.gen_hours : null; }
     app.replaceChildren(
       h('a', { class: 'back', href: t ? '#truck-' + encodeURIComponent(t.truck_id) : '#requests', text: t ? '← Back to the truck page' : '← Service tickets' }),
       h('p', { class: 'eyebrow', text: 'Service' }),
       h('h1', { class: 'title', text: preset.heading }),
       t ? h('p', { class: 'lede' }, h('strong', { text: t.truck_id }), t.truck_name ? ' · ' + t.truck_name : '') : null,
-      ticketEditor(null, { preset: p, trucks: fleet.map((x) => ({ truck_id: x.truck_id, truck_name: x.truck_name })) }));
+      ticketEditor(null, { preset: p, trucks: fleet.map((x) => ({ truck_id: x.truck_id, truck_name: x.truck_name, systems: x.systems })) }));
   };
 
   // ---------- customer: request service (creates a ticket with the few fields a customer fills in)
@@ -1669,6 +1723,8 @@
     if (token !== renderToken) return;
     if (!t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
     const cat = selF('What kind of service?', [['', 'Choose…'], ...CUST_CATS.map((c) => [c, c === 'Other' ? 'Something else' : c])], '');
+    const sysPick = selF('Which part of the truck? (optional)', [], '');
+    fillSystemSelect(sysPick.input, t.systems, '', 'Not sure / something else');
     const urg = selF('How urgent is it?', [['Low', 'Low: whenever convenient'], ['Normal', 'Normal: in the next week or two'], ['Urgent', 'Urgent: the truck can’t be used']], 'Normal');
     const title = inF('In a few words, what do you need?', '', { maxlength: '120', placeholder: 'For example: Oil change, A/C not cooling' });
     const details = areaF('Anything else we should know? (optional)', '', { maxlength: '2000', rows: '5', placeholder: 'What happened, when it started, where the truck is, best time to reach you…' });
@@ -1689,14 +1745,14 @@
     const cRole = inF('Role (optional)', '', { maxlength: '80', placeholder: 'Fleet manager, driver, site lead…' });
     const cPhone = inF('Phone', '', { type: 'tel', maxlength: '40', autocomplete: 'tel' });
     const cEmail = inF('Email', me.email || '', { type: 'email', maxlength: '160', autocomplete: 'email' });
-    const snap = () => [cat.input.value, title.input.value, details.input.value, locIn.input.value, cRole.input.value, cPhone.input.value].join('|');
+    const snap = () => [cat.input.value, sysPick.input.value, title.input.value, details.input.value, locIn.input.value, cRole.input.value, cPhone.input.value].join('|');
     const start0 = snap();
     unsaved.dirty = () => snap() !== start0;
     const st = h('span', { class: 'status', 'aria-live': 'polite' });
     const preview = !isCustomer();
     const btn = h('button', { class: 'btn', type: 'submit', text: 'Send request', disabled: preview });
     const form = h('form', { class: 'card form', novalidate: true },
-      h('fieldset', null, h('legend', { text: 'What do you need?' }), h('div', { class: 'grid' }, h('div', { class: 'pair' }, cat.wrap, urg.wrap), title.wrap, details.wrap)),
+      h('fieldset', null, h('legend', { text: 'What do you need?' }), h('div', { class: 'grid' }, h('div', { class: 'pair' }, cat.wrap, sysPick.wrap, urg.wrap), title.wrap, details.wrap)),
       h('fieldset', null, h('legend', { text: 'Where is the truck?' }), h('div', { class: 'choices' }, gpsR.el, entR.el), locIn.wrap),
       h('fieldset', null, h('legend', { text: 'Who should Farber contact?' }),
         h('p', { class: 'note', text: 'It can be someone other than you, like a fleet manager or the driver. Give a phone number or an email (or both).' }),
@@ -1716,7 +1772,8 @@
       try {
         const res = await rpc('web_customer_ticket_create', { p_truck: t.truck_id, p_category: cat.input.value, p_title: title.input.value.trim(), p_details: details.input.value.trim(), p_urgency: urg.input.value,
           p_location_mode: mode, p_location: mode === 'entered' ? locIn.input.value.trim() : null,
-          p_contact_name: cName.input.value.trim(), p_contact_role: cRole.input.value.trim(), p_contact_phone: cPhone.input.value.trim(), p_contact_email: cEmail.input.value.trim() });
+          p_contact_name: cName.input.value.trim(), p_contact_role: cRole.input.value.trim(), p_contact_phone: cPhone.input.value.trim(), p_contact_email: cEmail.input.value.trim(),
+          p_system: sysPick.input.value || null });
         unsaved.dirty = () => false;
         location.hash = '#ticket-' + res.ticket_no;
       } catch (err) { st.className = 'status bad'; st.textContent = friendly(err); btn.disabled = false; }
@@ -1736,7 +1793,7 @@
     h('tbody', null, reqs.map((x) => h('tr', null,
       h('td', { class: 'first nowrap', 'data-label': 'Ticket' }, canOpenTickets() ? ticketLink(x.ticket_no) : '#' + x.ticket_no),
       h('td', { class: 'nowrap', 'data-label': 'Requested' }, h('div', { text: fmtDay(x.created_at) }), !cust && x.requester_name ? h('div', { class: 'note', text: x.requester_name }) : null),
-      h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, canOpenTickets() ? h('a', { href: '#ticket-' + x.ticket_no, text: x.title }) : x.title), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
+      h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, canOpenTickets() ? h('a', { href: '#ticket-' + x.ticket_no, text: x.title }) : x.title), h('div', { class: 'note', text: [x.category, x.system, x.details].filter(Boolean).join(' · ') })),
       h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + tagTone(x, URG_TONE[x.urgency]), text: x.urgency })),
       h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + (REQ_TONE[x.status] || 'muted'), text: x.status })),
       h('td', { 'data-label': 'Scheduled', class: 'nowrap' }, h('div', { text: x.scheduled_for ? fmtDay(x.scheduled_for) : '—' }), x.assigned_to ? h('div', { class: 'note', text: x.assigned_to }) : null)))))
@@ -1773,7 +1830,7 @@
         h('td', { 'data-label': 'Truck' }, h('a', { href: '#truck-' + encodeURIComponent(x.truck_id) }, h('strong', { text: x.truck_id })), x.truck_name ? h('div', { class: 'note', text: x.truck_name }) : null),
         h('td', { 'data-label': 'Customer' }, h('div', { text: x.requester_name || (x.source === 'Farber' ? 'Farber' : x.requested_by) || '—' }), x.company ? h('div', { class: 'note', text: x.company }) : null,
           x.req_contact_name && x.req_contact_name !== x.requester_name ? h('div', { class: 'note', text: 'Contact: ' + [x.req_contact_name, x.req_contact_phone].filter(Boolean).join(' · ') }) : null),
-        h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, h('a', { href: '#ticket-' + x.ticket_no, text: x.title })), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
+        h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, h('a', { href: '#ticket-' + x.ticket_no, text: x.title })), h('div', { class: 'note', text: [x.category, x.system, x.details].filter(Boolean).join(' · ') })),
         h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + tagTone(x, URG_TONE[x.urgency]), text: x.urgency })),
         h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + (REQ_TONE[x.status] || 'muted'), text: x.status })),
         h('td', { 'data-label': 'Scheduled', class: 'nowrap' }, h('div', { text: x.scheduled_for ? fmtDay(x.scheduled_for) : '—' }), x.assigned_to ? h('div', { class: 'note', text: x.assigned_to }) : null)))

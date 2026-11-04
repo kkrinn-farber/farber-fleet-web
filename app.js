@@ -171,7 +171,8 @@
     if ((m = /^customer-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'customer', id: m[1] };
     if ((m = /^(work|schedule|done)-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'service', kind: m[1], id: m[2] };
     if ((m = /^request-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'request', id: m[1] };
-    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks', 'requests'].includes(raw)) return { page: raw, id: null };
+    if ((m = /^ticket-(\d{1,9})$/.exec(raw))) return { page: 'ticket', id: m[1] };
+    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks', 'requests', 'newticket'].includes(raw)) return { page: raw, id: null };
     return { page: 'trucks', id: null };
   };
   const go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
@@ -195,12 +196,12 @@
     currentHash = location.hash;
     let r = parse();
     // Customers only get their own trucks' customer pages and their account.
-    if (isCustomer() && !['customer', 'account', 'mytrucks', 'request'].includes(r.page)) r = { page: 'mytrucks', id: null };
+    if (isCustomer() && !['customer', 'account', 'mytrucks', 'request', 'ticket'].includes(r.page)) r = { page: 'mytrucks', id: null };
     // Service requests: Service users and admins
-    if (r.page === 'requests' && !isServiceView()) r = { page: 'trucks', id: null };
+    if ((r.page === 'requests' || r.page === 'newticket') && !isServiceView()) r = { page: 'trucks', id: null };
     // Sales doesn't get the offline, shocks or warnings pages
     if (isSalesView() && ['offline', 'shocks', 'warnings'].includes(r.page)) r = { page: 'trucks', id: null };
-    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page);
+    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page);
     window.scrollTo(0, 0);
     const adminPages = ['edit', 'new', 'users'];
     if (adminPages.includes(r.page) && !isAdmin()) {
@@ -209,7 +210,8 @@
     }
     const pages = { trucks: renderFleet, truck: renderTruck, offline: renderOffline, shocks: renderShocks, warnings: renderWarnings,
       edit: r.id ? renderEditor : renderEditList, new: renderEditor, users: renderUsers, account: renderAccount,
-      customer: renderCustomer, mytrucks: renderMyTrucks, service: renderServicePage, requests: renderRequests, request: renderRequestForm };
+      customer: renderCustomer, mytrucks: renderMyTrucks, service: renderServicePage, requests: renderRequests, request: renderRequestForm,
+      ticket: renderTicket, newticket: (rr, tk) => renderNewTicket(rr, tk, { heading: 'New ticket', status: 'New' }) };
     app.replaceChildren(h('p', { class: 'loading', text: 'Loading…' }));
     try {
       await pages[r.page](r, token);
@@ -413,7 +415,7 @@
         h('div', { class: 'tile' }, h('h3', { text: 'Trucks' }), h('span', { class: 'big', text: num(k.trucks_total) }), h('span', { class: 'sub', text: `${num(k.trucks_online)} online now` })),
         sales ? null : h('a', { class: 'tile', href: '#offline' }, h('h3', { text: 'Trucks offline' }), h('span', { class: 'big' + (k.trucks_offline ? ' bad' : ''), text: num(k.trucks_offline) }), h('span', { class: 'sub', text: 'No report for 10 minutes · open list →' })),
         sales ? null : h('a', { class: 'tile', href: '#shocks' }, h('h3', { text: 'Shocks this week' }), h('span', { class: 'big', text: num(k.shocks_7d) }), h('span', { class: 'sub', text: `${num(k.shocks_24h)} in the last 24 hours · open list →` })),
-        openReq ? h('a', { class: 'tile', href: '#requests' }, h('h3', { text: 'Open service requests' }), h('span', { class: 'big' + (openReq.urgent ? ' bad' : openReq.new ? ' warn' : ''), text: num(openReq.open) }),
+        openReq ? h('a', { class: 'tile', href: '#requests' }, h('h3', { text: 'Open service tickets' }), h('span', { class: 'big' + (openReq.urgent ? ' bad' : openReq.new ? ' warn' : ''), text: num(openReq.open) }),
           h('span', { class: 'sub', text: `${num(openReq.new)} new · ${num(openReq.urgent)} urgent · open list →` })) : null,
         sales ? null : h('a', { class: 'tile', href: '#warnings' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance · open list →' }))),
       h('div', { class: 'toolbar' }, search, count),
@@ -620,7 +622,7 @@
       isServiceView() ? h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' }), h('p', { class: 'note', text: 'Oil changes are in the Truck and Generator cards under Right now.' })) : null,
       isServiceView() ? h('div', { class: 'actions service-actions' }, Object.entries(SERVICE_PAGES).map(([k, label]) =>
         h('a', { class: 'btn', href: '#' + k + '-' + encodeURIComponent(t.truck_id), text: label }))) : null,
-      reqs ? h('div', { class: 'section-head' }, h('h2', { text: 'Service requests' }), h('a', { class: 'note', href: '#requests', text: 'All service requests →' })) : null,
+      reqs ? h('div', { class: 'section-head' }, h('h2', { text: 'Service tickets' }), h('a', { class: 'note', href: '#requests', text: 'All service tickets →' })) : null,
       reqs ? truckRequestsCard(reqs, false) : null,
       h('div', { class: 'section-head' }, h('h2', { text: 'Events' }), h('p', { class: 'note', text: 'Last 30 days, with when and where each warning started' })),
       h('div', { class: 'card scroll' }, eventRows.length ? h('table', { class: 'stack' },
@@ -889,6 +891,8 @@
   // ---------- service pages (placeholders; built later)
   const renderServicePage = async (r, token) => {
     if (!isServiceView()) { location.replace('#truck-' + encodeURIComponent(r.id)); return; }
+    if (r.kind === 'schedule') return renderNewTicket(r, token, { heading: 'Schedule maintenance', status: 'Scheduled', category: 'Maintenance' });
+    if (r.kind === 'done') return renderNewTicket(r, token, { heading: 'Add maintenance completed', status: 'Done', category: 'Maintenance' });
     const [rows, work] = await Promise.all([rpc('web_truck', { p_truck: r.id }), r.kind === 'work' ? rpc('web_truck_work', { p_truck: r.id }) : Promise.resolve([])]);
     if (token !== renderToken) return;
     const t = rows[0];
@@ -915,7 +919,7 @@
   const CAT_TONE = { Maintenance: 'ok', Inspection: 'muted', Repair: 'warn', Warranty: 'warn', Breakdown: 'bad', Upgrade: 'accent' };
   const renderWorkHistory = (t, work) => {
     let cat = 'all';
-    const search = h('input', { class: 'search', type: 'search', placeholder: 'Search work, notes, shop or place', 'aria-label': 'Search maintenance history' });
+    const search = h('input', { class: 'search', type: 'search', placeholder: 'Search ticket number, work, notes, shop or place', 'aria-label': 'Search maintenance history' });
     const count = h('span', { class: 'note' });
     const tabs = h('div', { class: 'seg tabs-row', role: 'tablist', 'aria-label': 'Filter by type' });
     const tbody = h('tbody');
@@ -925,12 +929,12 @@
         h('button', { type: 'button', role: 'tab', 'aria-pressed': String(cat === k), onclick: () => { cat = k; draw(); } }, `${l} (${n(k)})`)));
       const q = clean(search.value).toLowerCase();
       const rows = work.filter((w) => (cat === 'all' || w.category === cat)
-        && (!q || [w.title, w.notes, w.done_by, w.location, w.category].some((v) => String(v || '').toLowerCase().includes(q))));
+        && (!q || ['#' + w.ticket_no, w.title, w.notes, w.done_by, w.location, w.category].some((v) => String(v || '').toLowerCase().includes(q))));
       count.textContent = rows.length === work.length ? `${work.length} records` : `${rows.length} of ${work.length} records`;
       tbody.replaceChildren(...(rows.length ? rows.map((w) => h('tr', null,
-        h('td', { class: 'first nowrap', 'data-label': 'Date', text: fmtDay(w.done_on) }),
+        h('td', { class: 'first nowrap', 'data-label': 'Date' }, h('div', { text: fmtDay(w.done_on) }), ticketLink(w.ticket_no)),
         h('td', { 'data-label': 'Type' }, h('span', { class: 'pill ' + (CAT_TONE[w.category] || 'muted'), text: w.category })),
-        h('td', { 'data-label': 'Work' }, h('div', { class: 'work-title', text: w.title }), w.notes ? h('div', { class: 'note', text: w.notes }) : null),
+        h('td', { 'data-label': 'Work' }, h('div', { class: 'work-title' }, h('a', { href: '#ticket-' + w.ticket_no, text: w.title })), w.notes ? h('div', { class: 'note', text: w.notes }) : null),
         h('td', { 'data-label': 'Mileage', class: 'nowrap num', text: present(w.odometer_mi) ? num(w.odometer_mi) + ' mi' : '—' }),
         h('td', { 'data-label': 'Gen hours', class: 'nowrap num', text: present(w.hours) ? num(w.hours, Number.isInteger(w.hours) ? 0 : 1) + ' h' : '—' }),
         h('td', { 'data-label': 'Done by' }, h('div', { text: w.done_by || '—' }), w.location ? h('div', { class: 'note', text: w.location }) : null)))
@@ -958,45 +962,223 @@
         h('thead', null, h('tr', null, ['Date', 'Type', 'Work', 'Mileage', 'Gen hours', 'Done by'].map((x) => h('th', { text: x })))), tbody)));
   };
 
-  // ---------- customer: request service (placeholder; the form comes later)
+  // ---------- service tickets
+  const TICKET_CATS = ['Maintenance', 'Repair', 'Breakdown', 'Inspection', 'Warranty', 'Upgrade', 'Other'];
+  const CUST_CATS = ['Maintenance', 'Repair', 'Breakdown', 'Inspection', 'Other'];
+  const URGENCIES = ['Low', 'Normal', 'Urgent'];
+  const OIL_TYPES = [['', 'No'], ['engine_oil', 'Engine oil change'], ['generator_oil', 'Generator oil change']];
+  const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const ticketLink = (no, text) => h('a', { class: 'ticket-no', href: '#ticket-' + no, text: text || '#' + no });
+  // small form helpers that keep line breaks in text areas
+  const fId = () => 'f-' + Math.random().toString(36).slice(2, 8);
+  const inF = (label, value, attrs) => { const id = fId(); const input = h('input', { id, autocomplete: 'off', ...attrs }); input.value = value ?? ''; return { wrap: h('div', { class: 'field' }, h('label', { for: id, text: label }), input), input }; };
+  const selF = (label, opts, value) => { const id = fId(); const input = h('select', { id }, opts.map((o) => Array.isArray(o) ? h('option', { value: o[0], text: o[1] }) : h('option', { value: o, text: o }))); input.value = value ?? ''; return { wrap: h('div', { class: 'field' }, h('label', { for: id, text: label }), input), input }; };
+  const areaF = (label, value, attrs) => { const id = fId(); const input = h('textarea', { id, rows: '4', ...attrs }); input.value = value ?? ''; return { wrap: h('div', { class: 'field wide' }, h('label', { for: id, text: label }), input), input }; };
+
+  // Service users and admins: create (k null) or edit a ticket
+  const ticketEditor = (k, opts) => {
+    const isNew = !k;
+    const v = k || opts.preset || {};
+    let truckSel = null;
+    if (isNew && !v.truck_id) {
+      truckSel = selF('Truck', [['', 'Choose a truck…'], ...(opts.trucks || []).map((t) => [t.truck_id, t.truck_id + (t.truck_name ? ' · ' + t.truck_name : '')])], '');
+    }
+    const f = {
+      title: inF('Title', v.title, { maxlength: '160', placeholder: 'What needs doing' }),
+      category: selF('Type', TICKET_CATS, v.category || 'Repair'),
+      urgency: selF('Urgency', URGENCIES, v.urgency || 'Normal'),
+      details: areaF('Request / problem', v.details, { maxlength: '4000' }),
+      status: selF('Status', REQ_STATUS, v.status || 'New'),
+      scheduled_for: inF('Scheduled for', v.scheduled_for, { type: 'date' }),
+      assigned_to: inF('Assigned to', v.assigned_to, { maxlength: '120', placeholder: 'Who is doing the work' }),
+      done_on: inF('Done on', v.done_on, { type: 'date' }),
+      done_by: inF('Done by', v.done_by, { maxlength: '120' }),
+      location: inF('Where', v.location, { maxlength: '160' }),
+      odometer_mi: inF('Mileage (mi)', v.odometer_mi, { type: 'number', min: '0', step: '1' }),
+      hours: inF('Generator hours', v.hours, { type: 'number', min: '0', step: '0.1' }),
+      type_code: selF('Counts as an oil change', OIL_TYPES, v.type_code || ''),
+      work_done: areaF('Work done', v.work_done, { maxlength: '4000' }),
+    };
+    f.type_code.wrap.title = 'Oil changes reset the due date on the truck page';
+    const snap = () => JSON.stringify(Object.fromEntries(Object.entries(f).map(([key, x]) => [key, x.input.value]).concat([['truck', truckSel ? truckSel.input.value : '']])));
+    const start = snap();
+    unsaved.dirty = () => snap() !== start;
+    f.status.input.addEventListener('change', () => { if (f.status.input.value === 'Done' && !f.done_on.input.value) f.done_on.input.value = todayIso(); });
+    const st = h('span', { class: 'status', 'aria-live': 'polite' });
+    const btn = h('button', { class: 'btn', type: 'submit', text: isNew ? 'Create ticket' : 'Save changes' });
+    const form = h('form', { class: 'card form ticket-form', novalidate: true },
+      h('fieldset', null, h('legend', { text: 'Request' }), h('div', { class: 'grid' },
+        truckSel ? (truckSel.wrap.classList.add('wide'), truckSel.wrap) : null,
+        (f.title.wrap.classList.add('wide'), f.title.wrap), f.category.wrap, f.urgency.wrap, f.details.wrap)),
+      h('fieldset', null, h('legend', { text: 'Status and scheduling' }), h('div', { class: 'grid' },
+        f.status.wrap, f.scheduled_for.wrap, f.assigned_to.wrap)),
+      h('fieldset', null, h('legend', { text: 'Work done' }), h('div', { class: 'grid' },
+        f.done_on.wrap, f.done_by.wrap, f.location.wrap, f.odometer_mi.wrap, f.hours.wrap, f.type_code.wrap, f.work_done.wrap)),
+      h('div', { class: 'actions' }, btn, st));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(Object.entries(f).map(([key, x]) => [key, String(x.input.value).trim()]));
+      data.truck_id = truckSel ? truckSel.input.value : v.truck_id;
+      if (!data.truck_id) { st.className = 'status bad'; st.textContent = 'Pick a truck.'; return; }
+      if (!data.title) { st.className = 'status bad'; st.textContent = 'Give the ticket a title.'; f.title.input.focus(); return; }
+      btn.disabled = true; st.className = 'status busy'; st.textContent = 'Saving…';
+      try {
+        const res = await rpc('web_ticket_save', { p_no: isNew ? null : k.ticket_no, p_data: data });
+        unsaved.dirty = () => false;
+        if (isNew) location.hash = '#ticket-' + res.ticket_no; else route();
+      } catch (err) { st.className = 'status bad'; st.textContent = friendly(err); btn.disabled = false; }
+    });
+    return form;
+  };
+
+  const notesCard = (k) => {
+    const box = areaF('Add a note for the team', '', { rows: '3', maxlength: '4000', placeholder: 'Calls, parts ordered, what you found…' });
+    const st = h('span', { class: 'status', 'aria-live': 'polite' });
+    const btn = h('button', { class: 'btn', type: 'submit', text: 'Add note' });
+    const form = h('form', { class: 'note-form', novalidate: true }, box.wrap, h('div', { class: 'actions' }, btn, st));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = box.input.value.trim();
+      if (!body) { st.className = 'status bad'; st.textContent = 'Type a note first.'; return; }
+      btn.disabled = true; st.className = 'status busy'; st.textContent = 'Adding…';
+      try { await rpc('web_ticket_note', { p_no: k.ticket_no, p_body: body }); unsaved.dirty = () => false; route(); }
+      catch (err) { st.className = 'status bad'; st.textContent = friendly(err); btn.disabled = false; }
+    });
+    const notes = k.notes || [];
+    return h('div', { class: 'card notes' },
+      h('h2', { text: 'Team notes' }),
+      h('p', { class: 'note', text: 'Only Farber Service and admins see these. Status, schedule and assignment changes are added automatically.' }),
+      notes.length ? h('ol', { class: 'note-list' }, notes.map((n) => h('li', { class: 'note-item' + (n.kind === 'change' ? ' change' : '') },
+        h('div', { class: 'note-head' }, h('strong', { text: n.author || 'Farber' }), h('span', { class: 'note', text: fmtTime(n.at) })),
+        h('div', { class: 'note-body', text: n.body }))))
+        : h('p', { class: 'muted', text: 'No notes yet.' }),
+      form);
+  };
+
+  const renderTicket = async (r, token) => {
+    const no = Number(r.id);
+    let k;
+    try { k = await rpc('web_ticket', { p_no: no }); }
+    catch (err) {
+      if (/Not allowed|no ticket/i.test(err.message || '')) { app.replaceChildren(h('div', { class: 'empty', text: /no ticket/i.test(err.message) ? `There is no ticket #${no}.` : 'You can’t open this ticket.' })); return; }
+      throw err;
+    }
+    if (token !== renderToken) return;
+    const head = [
+      h('a', { class: 'back', href: k.can_edit ? '#truck-' + encodeURIComponent(k.truck_id) : '#customer-' + encodeURIComponent(k.truck_id), text: k.can_edit ? '← Truck ' + k.truck_id : '← Back to my truck' }),
+      h('p', { class: 'eyebrow', text: 'Service ticket #' + k.ticket_no }),
+      h('h1', { class: 'title', text: k.title }),
+      h('div', { class: 'meta' },
+        h('span', { class: 'pill ' + (REQ_TONE[k.status] || 'muted'), text: k.status }),
+        h('span', { class: 'pill ' + (URG_TONE[k.urgency] || 'muted'), text: k.urgency }),
+        h('span', { class: 'pill ' + (CAT_TONE[k.category] || 'muted'), text: k.category }),
+        h('span', { text: (k.source === 'Customer' ? 'Requested by ' + (k.requester_name || 'the customer') : 'Opened by Farber') + ' · ' + fmtTime(k.created_at) })),
+    ];
+    if (k.can_edit) {
+      const info = h('div', { class: 'panels' },
+        panel('Truck', h('div', { class: 'kv' }, h('span', { text: 'Truck' }), h('a', { href: '#truck-' + encodeURIComponent(k.truck_id), text: k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '') })),
+          kv('Company', k.company), kv('Contact', k.contact_name),
+          h('div', { class: 'kv' }, h('span', { text: 'Phone' }), k.contact_phone ? h('a', { href: 'tel:' + String(k.contact_phone).replace(/[^0-9+]/g, ''), text: k.contact_phone }) : h('b', { text: '—' })),
+          h('div', { class: 'kv' }, h('span', { text: 'Email' }), k.contact_email ? h('a', { href: 'mailto:' + k.contact_email, text: k.contact_email }) : h('b', { text: '—' }))),
+        panel('Ticket', kv('Ticket number', '#' + k.ticket_no), kv('Opened', fmtTime(k.created_at)), kv('Requested by', k.requester_name || (k.source === 'Farber' ? 'Farber' : null)),
+          kv('Last updated', fmtTime(k.updated_at)), kv('Updated by', k.updated_by)));
+      app.replaceChildren(...head, info,
+        h('div', { class: 'ticket-cols' }, h('div', null, h('div', { class: 'section-head' }, h('h2', { text: 'Ticket details' })), ticketEditor(k, {})), notesCard(k)));
+    } else {
+      app.replaceChildren(...head,
+        h('div', { class: 'panels' },
+          panel('Your request', kv('Type', k.category), kv('Urgency', k.urgency), kv('Sent', fmtTime(k.created_at)), kv('Truck', k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '')),
+            k.details ? h('p', { class: 'ticket-text', text: k.details }) : null),
+          panel('Status', kv('Status', k.status, null, k.status === 'Done' ? 'ok' : null), kv('Scheduled for', k.scheduled_for ? fmtDay(k.scheduled_for) : null), kv('Assigned to', k.assigned_to)),
+          k.status === 'Done' || k.work_done ? panel('Work done', kv('Done on', k.done_on ? fmtDay(k.done_on) : null), kv('Done by', k.done_by),
+            k.work_done ? h('p', { class: 'ticket-text', text: k.work_done }) : null) : null),
+        h('p', { class: 'note', text: 'Questions about this ticket? Call Farber Service and give the ticket number #' + k.ticket_no + '.' }));
+    }
+  };
+
+  // Service users and admins: new ticket (from the tickets page, or Schedule / Add maintenance completed on a truck)
+  const renderNewTicket = async (r, token, preset) => {
+    if (!isServiceView()) { location.replace(r.id ? '#truck-' + encodeURIComponent(r.id) : '#trucks'); return; }
+    const [trows, fleet] = await Promise.all([r.id ? rpc('web_truck', { p_truck: r.id }) : Promise.resolve([]), r.id ? Promise.resolve([]) : rpc('web_fleet')]);
+    if (token !== renderToken) return;
+    const t = trows[0];
+    if (r.id && !t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
+    const p = { ...preset, truck_id: t ? t.truck_id : null };
+    if (p.status === 'Done') { p.done_on = todayIso(); p.odometer_mi = t ? t.odometer_mi : null; p.hours = t ? t.gen_hours : null; }
+    app.replaceChildren(
+      h('a', { class: 'back', href: t ? '#truck-' + encodeURIComponent(t.truck_id) : '#requests', text: t ? '← Back to the truck page' : '← Service tickets' }),
+      h('p', { class: 'eyebrow', text: 'Service' }),
+      h('h1', { class: 'title', text: preset.heading }),
+      t ? h('p', { class: 'lede' }, h('strong', { text: t.truck_id }), t.truck_name ? ' · ' + t.truck_name : '') : null,
+      ticketEditor(null, { preset: p, trucks: fleet.map((x) => ({ truck_id: x.truck_id, truck_name: x.truck_name })) }));
+  };
+
+  // ---------- customer: request service (creates a ticket with the few fields a customer fills in)
   const renderRequestForm = async (r, token) => {
     let t;
     try { t = await rpc('web_customer_truck', { p_truck: r.id }); }
     catch (err) { if (/Not allowed/i.test(err.message || '')) { location.replace(isCustomer() ? '#mytrucks' : '#trucks'); return; } throw err; }
     if (token !== renderToken) return;
     if (!t) { app.replaceChildren(h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
+    const cat = selF('What kind of service?', [['', 'Choose…'], ...CUST_CATS.map((c) => [c, c === 'Other' ? 'Something else' : c])], '');
+    const urg = selF('How urgent is it?', [['Low', 'Low: whenever convenient'], ['Normal', 'Normal: in the next week or two'], ['Urgent', 'Urgent: the truck can’t be used']], 'Normal');
+    const title = inF('In a few words, what do you need?', '', { maxlength: '120', placeholder: 'For example: Oil change, A/C not cooling' });
+    const details = areaF('Anything else we should know? (optional)', '', { maxlength: '2000', rows: '5', placeholder: 'What happened, when it started, where the truck is, best time to reach you…' });
+    title.wrap.classList.add('wide');
+    const snap = () => [cat.input.value, title.input.value, details.input.value].join('|');
+    unsaved.dirty = () => snap() !== '||';
+    const st = h('span', { class: 'status', 'aria-live': 'polite' });
+    const preview = !isCustomer();
+    const btn = h('button', { class: 'btn', type: 'submit', text: 'Send request', disabled: preview });
+    const form = h('form', { class: 'card form', novalidate: true },
+      h('div', { class: 'grid' }, cat.wrap, urg.wrap, title.wrap, details.wrap),
+      h('div', { class: 'actions' }, btn, st));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (preview) return;
+      if (!cat.input.value) { st.className = 'status bad'; st.textContent = 'Choose what kind of service you need.'; return; }
+      if (!title.input.value.trim()) { st.className = 'status bad'; st.textContent = 'Say briefly what you need.'; title.input.focus(); return; }
+      btn.disabled = true; st.className = 'status busy'; st.textContent = 'Sending…';
+      try {
+        const res = await rpc('web_customer_ticket_create', { p_truck: t.truck_id, p_category: cat.input.value, p_title: title.input.value.trim(), p_details: details.input.value.trim(), p_urgency: urg.input.value });
+        unsaved.dirty = () => false;
+        location.hash = '#ticket-' + res.ticket_no;
+      } catch (err) { st.className = 'status bad'; st.textContent = friendly(err); btn.disabled = false; }
+    });
     app.replaceChildren(
       h('a', { class: 'back', href: '#customer-' + encodeURIComponent(t.truck_id), text: '← Back to my truck' }),
       h('p', { class: 'eyebrow', text: 'Customer portal' }),
       h('h1', { class: 'title' }, 'Request service'),
-      h('p', { class: 'lede' }, h('strong', { text: t.truck_id }), t.truck_name ? ' · ' + t.truck_name : ''),
-      h('div', { class: 'card' },
-        h('h2', { text: 'Coming soon' }),
-        h('p', { class: 'muted', style: 'margin-top:6px', text: 'Here you’ll be able to tell Farber Service what your truck needs: maintenance, a repair or a breakdown. Farber will get back to you to schedule it. This page is being built.' })));
+      h('p', { class: 'lede' }, h('strong', { text: t.truck_id }), t.truck_name ? ' · ' + t.truck_name : '', ' · Farber Service will get back to you to schedule it.'),
+      preview ? h('div', { class: 'notice' }, h('strong', { text: 'Customer view' }), h('span', { text: ' Only the truck’s customer can send this form. Staff create tickets from the truck page.' })) : null,
+      form);
   };
 
   // one truck's service requests (truck page and customer page)
   const truckRequestsCard = (reqs, cust) => h('div', { class: 'card scroll' }, reqs.length ? h('table', { class: 'stack work-table' },
-    h('thead', null, h('tr', null, ['Requested', 'Request', 'Urgency', 'Status', 'Scheduled'].map((x) => h('th', { text: x })))),
+    h('thead', null, h('tr', null, ['Ticket', 'Requested', 'Request', 'Urgency', 'Status', 'Scheduled'].map((x) => h('th', { text: x })))),
     h('tbody', null, reqs.map((x) => h('tr', null,
-      h('td', { class: 'first nowrap', 'data-label': 'Requested' }, h('div', { text: fmtDay(x.created_at) }), !cust && x.requester_name ? h('div', { class: 'note', text: x.requester_name }) : null),
-      h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title', text: x.title }), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
+      h('td', { class: 'first nowrap', 'data-label': 'Ticket' }, canOpenTickets() ? ticketLink(x.ticket_no) : '#' + x.ticket_no),
+      h('td', { class: 'nowrap', 'data-label': 'Requested' }, h('div', { text: fmtDay(x.created_at) }), !cust && x.requester_name ? h('div', { class: 'note', text: x.requester_name }) : null),
+      h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, canOpenTickets() ? h('a', { href: '#ticket-' + x.ticket_no, text: x.title }) : x.title), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
       h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + (URG_TONE[x.urgency] || 'muted'), text: x.urgency })),
       h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + (REQ_TONE[x.status] || 'muted'), text: x.status })),
       h('td', { 'data-label': 'Scheduled', class: 'nowrap' }, h('div', { text: x.scheduled_for ? fmtDay(x.scheduled_for) : '—' }), x.assigned_to ? h('div', { class: 'note', text: x.assigned_to }) : null)))))
-    : h('p', { class: 'muted', text: cust ? 'You haven’t requested service for this truck yet.' : 'No service requests for this truck.' }));
+    : h('p', { class: 'muted', text: cust ? 'You haven’t requested service for this truck yet.' : 'No open tickets for this truck.' }));
 
   // ---------- service requests (Service users and admins)
   const REQ_STATUS = ['New', 'In progress', 'Scheduled', 'Done', 'Cancelled'];
   const REQ_TONE = { New: 'accent', 'In progress': 'warn', Scheduled: 'ok', Done: 'muted', Cancelled: 'muted' };
   const URG_TONE = { Urgent: 'bad', Normal: 'muted', Low: 'muted' };
+  // customers open their own tickets; staff need Service or admin
+  const canOpenTickets = () => isCustomer() || isServiceView();
   const renderRequests = async (r, token) => {
     const reqs = await rpc('web_service_requests');
     if (token !== renderToken) return;
     let tab = 'open';
     const isOpen = (q) => ['New', 'In progress', 'Scheduled'].includes(q.status);
     const n = (k) => reqs.filter((q) => k === 'all' || (k === 'open' ? isOpen(q) : q.status === k)).length;
-    const search = h('input', { class: 'search', type: 'search', placeholder: 'Search truck, customer or request', 'aria-label': 'Search service requests' });
+    const search = h('input', { class: 'search', type: 'search', placeholder: 'Search ticket number, truck, customer or request', 'aria-label': 'Search service tickets' });
     const count = h('span', { class: 'note' });
     const tabs = h('div', { class: 'seg tabs-row', role: 'tablist', 'aria-label': 'Filter by status' });
     const tbody = h('tbody');
@@ -1005,25 +1187,27 @@
         .map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-pressed': String(tab === k), onclick: () => { tab = k; draw(); } }, `${l} (${n(k)})`)));
       const q = clean(search.value).toLowerCase();
       const rows = reqs.filter((x) => (tab === 'all' || (tab === 'open' ? isOpen(x) : x.status === tab))
-        && (!q || [x.truck_id, x.truck_name, x.company, x.requester_name, x.requested_by, x.title, x.details].some((v) => String(v || '').toLowerCase().includes(q))));
-      count.textContent = `${rows.length} ${rows.length === 1 ? 'request' : 'requests'}`;
+        && (!q || ['#' + x.ticket_no, x.truck_id, x.truck_name, x.company, x.requester_name, x.requested_by, x.title, x.details].some((v) => String(v || '').toLowerCase().includes(q))));
+      count.textContent = `${rows.length} ${rows.length === 1 ? 'ticket' : 'tickets'}`;
       tbody.replaceChildren(...(rows.length ? rows.map((x) => h('tr', null,
-        h('td', { class: 'first nowrap', 'data-label': 'Requested' }, h('div', { text: fmtDay(x.created_at) }), h('div', { class: 'note', text: ago(Math.round((Date.now() - new Date(x.created_at).getTime()) / 60000)) })),
+        h('td', { class: 'first nowrap', 'data-label': 'Ticket' }, ticketLink(x.ticket_no)),
+        h('td', { class: 'nowrap', 'data-label': 'Requested' }, h('div', { text: fmtDay(x.created_at) }), h('div', { class: 'note', text: ago(Math.round((Date.now() - new Date(x.created_at).getTime()) / 60000)) })),
         h('td', { 'data-label': 'Truck' }, h('a', { href: '#truck-' + encodeURIComponent(x.truck_id) }, h('strong', { text: x.truck_id })), x.truck_name ? h('div', { class: 'note', text: x.truck_name }) : null),
-        h('td', { 'data-label': 'Customer' }, h('div', { text: x.requester_name || x.requested_by || '—' }), x.company ? h('div', { class: 'note', text: x.company }) : null),
-        h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title', text: x.title }), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
+        h('td', { 'data-label': 'Customer' }, h('div', { text: x.requester_name || (x.source === 'Farber' ? 'Farber' : x.requested_by) || '—' }), x.company ? h('div', { class: 'note', text: x.company }) : null),
+        h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, h('a', { href: '#ticket-' + x.ticket_no, text: x.title })), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
         h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + (URG_TONE[x.urgency] || 'muted'), text: x.urgency })),
         h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + (REQ_TONE[x.status] || 'muted'), text: x.status })),
         h('td', { 'data-label': 'Scheduled', class: 'nowrap' }, h('div', { text: x.scheduled_for ? fmtDay(x.scheduled_for) : '—' }), x.assigned_to ? h('div', { class: 'note', text: x.assigned_to }) : null)))
-        : [h('tr', null, h('td', { colspan: '7', class: 'muted', text: 'No requests here.' }))]));
+        : [h('tr', null, h('td', { colspan: '8', class: 'muted', text: 'No tickets here.' }))]));
     };
     search.addEventListener('input', draw);
     draw();
     const urgent = reqs.filter((x) => isOpen(x) && x.urgency === 'Urgent').length;
     app.replaceChildren(
       h('p', { class: 'eyebrow', text: 'Service' }),
-      h('h1', { class: 'title', text: 'Service requests' }),
-      h('p', { class: 'lede', text: 'Requests customers send from their truck page. Open requests come first, newest and most urgent at the top.' }),
+      h('h1', { class: 'title', text: 'Service tickets' }),
+      h('p', { class: 'lede', text: 'Every job has a ticket: customer requests, scheduled work and finished maintenance. Open tickets come first, most urgent at the top. Closed tickets from the last 90 days are here too; older ones are in each truck’s Maintenance history.' }),
+      h('div', { class: 'actions' }, h('a', { class: 'btn', href: '#newticket', text: 'New ticket' })),
       h('div', { class: 'tiles' },
         h('div', { class: 'tile' }, h('h3', { text: 'New' }), h('span', { class: 'big' + (n('New') ? ' warn' : ''), text: num(n('New')) }), h('span', { class: 'sub', text: 'Waiting for Farber' })),
         h('div', { class: 'tile' }, h('h3', { text: 'Urgent and open' }), h('span', { class: 'big' + (urgent ? ' bad' : ''), text: num(urgent) }), h('span', { class: 'sub', text: 'Marked urgent by the customer' })),
@@ -1032,7 +1216,7 @@
       tabs,
       h('div', { class: 'toolbar' }, search, count),
       h('div', { class: 'card scroll' }, h('table', { class: 'stack work-table' },
-        h('thead', null, h('tr', null, ['Requested', 'Truck', 'Customer', 'Request', 'Urgency', 'Status', 'Scheduled'].map((x) => h('th', { text: x })))), tbody)));
+        h('thead', null, h('tr', null, ['Ticket', 'Requested', 'Truck', 'Customer', 'Request', 'Urgency', 'Status', 'Scheduled'].map((x) => h('th', { text: x })))), tbody)));
   };
 
   // ---------- customer portal: the customer's own truck, current information only

@@ -61,11 +61,21 @@ repository: the token file lets anyone pretend to be a truck.
 | `#new` | Add a truck (admins) |
 | `#users` | Users (admins): **Farber team** (types Sales/Service/Engineering, Viewer/Admin, tabs by type) and **Customers** (their trucks, **+ Add a truck** when they buy another, × to remove one) |
 | `#customer-19227` | The customer's truck page: everything current (right now, maintenance, build/delivery) without their address/contact, the Farber team, IP address, firmware or connection details (Location shows Online or Offline instead). Customers with several trucks switch with a dropdown. Admins and Sales open it with **View customer page** |
-| `#work-19227`, `#schedule-19227`, `#done-19227` | Service pages (Service users and admins): **Maintenance history** (every oil change, inspection, repair, warranty job, breakdown and upgrade, with filters and search), schedule maintenance and add maintenance completed (placeholders for now); the buttons are in the truck page's Maintenance section |
-| `#requests` | Service requests from customers (Service users and admins): open first, filters by status, search |
-| `#request-19227` | A customer's Request service page for their truck (placeholder; the form comes later) |
+| `#work-19227`, `#schedule-19227`, `#done-19227` | Service pages (Service users and admins): **Maintenance history** (every oil change, inspection, repair, warranty job, breakdown and upgrade, with filters and search), **Schedule maintenance** and **Add maintenance completed** (both create tickets); the buttons are in the truck page's Maintenance section |
+| `#requests` | Service tickets (Service users and admins): open tickets first plus the last 90 days of closed ones, filters, search, **New ticket** |
+| `#ticket-11001` | One ticket. Service users and admins edit every field and add team notes; status, schedule and assignment changes are logged as notes. The truck's customer sees a read-only version without notes |
+| `#newticket` | New ticket for any truck (Service users and admins) |
+| `#request-19227` | A customer's Request service form: type, urgency, a short summary and details. It creates a ticket |
 | `#mytrucks` | Opens the customer's first truck |
 | `#account` | Change your password |
 
 The menu (top left) lists them, and new pages get a line there. The theme menu has the same
 20 themes as the Claude dashboard; the choice is remembered on each device.
+
+## Service tickets
+
+Every job has a ticket number: customer requests, scheduled work and finished maintenance (the old
+maintenance records and requests were numbered #10001–#11077, oldest first). A finished ticket is part of the
+truck's Maintenance history; a finished oil change ticket ("Counts as an oil change") resets the due date.
+Only Service users and admins can edit tickets or read and write team notes. Customers can create tickets for
+their own trucks and see them read-only.

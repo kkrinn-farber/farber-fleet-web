@@ -236,3 +236,18 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .work-table td { vertical-align: top; }
 .work-title { font-weight: 600; }
 @media (min-width: 900px) { .work-table td:nth-child(3) { min-width: 22rem; } }
+/* service tickets */
+.ticket-no { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.ticket-cols { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1100px) { .ticket-cols { grid-template-columns: minmax(0, 3fr) minmax(20rem, 2fr); } .ticket-cols > .notes { margin-top: 46px; } }
+textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; resize: vertical; }
+.field label + textarea { margin-top: 0; }
+.notes { display: grid; gap: 12px; }
+.note-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.note-item { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--bg); }
+.note-item.change { background: transparent; border-style: dashed; }
+.note-item.change .note-body { color: var(--muted); font-size: 13px; }
+.note-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.note-body, .ticket-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ticket-text { margin-top: 8px; }
+.note-form { display: grid; gap: 8px; }

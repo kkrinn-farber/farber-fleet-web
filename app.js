@@ -59,7 +59,9 @@
   const ago = (m) => (m === null || m === undefined ? 'Never reported'
     : m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`);
   const mapUrl = (lat, lon) => `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
-  const statusPill = (s) => h('span', { class: 'pill ' + (s === 'Online' ? 'ok' : s === 'Offline' ? 'bad' : 'muted'), text: s });
+  const statusPill = (s) => h('span', { class: 'pill ' + (s === 'Online' ? 'ok' : s === 'Offline' ? 'bad' : s === 'Asleep' ? 'warn' : 'muted'), text: s, title: s === 'Asleep' ? 'Tracker’s backup battery is low; it checks in once a day until it recovers' : null });
+  // tracker schedule, e.g. 600 -> "10 min"
+  const fmtEvery = (sec) => !present(sec) ? null : sec < 3600 ? `${Math.round(sec / 60)} min` : sec < 86400 ? `${+(sec / 3600).toFixed(1)} h` : `${+(sec / 86400).toFixed(1)} day${sec === 86400 ? '' : 's'}`;
   const healthPill = (s) => h('span', { class: 'pill ' + (s === 'Good' ? 'ok' : 'warn'), text: s });
   const TYPES = { sales: 'Sales', service: 'Service', engineering: 'Engineering', customer: 'Customer' };
   // Admins can preview the site as another (staff) user type; customers have their own pages.
@@ -592,11 +594,13 @@
         h('div', { class: 'kv' }, h('span', { text: 'Near' }), present(t.lat)
           ? h('a', { href: mapUrl(t.lat, t.lon), target: '_blank', rel: 'noopener', text: [t.near_city, t.near_state].filter(Boolean).join(', ') || 'Map' })
           : h('b', { text: '—' })),
-        cust ? kv('Farber Fleet Connection', t.status, null, t.status === 'Online' ? 'ok' : 'bad') : kv('Connection', t.network),
+        cust ? kv('Farber Fleet Connection', t.status, null, t.status === 'Online' ? 'ok' : t.status === 'Asleep' ? 'warn' : 'bad') : kv('Connection', t.network),
         !cust && t.network === 'Wi-Fi' ? kv('Wi-Fi network', t.wifi_ssid) : null,
         !cust && t.network === 'Cellular' ? kv('Last on Wi-Fi', t.last_wifi_at ? ago(Math.round((Date.now() - new Date(t.last_wifi_at).getTime()) / 60000)) : 'Never') : null,
         cust ? null : kv('IP address', t.ip_addr),
-        cust ? null : kv('Firmware', t.fw)),
+        cust ? null : kv('Firmware', t.fw),
+        cust ? null : kv('Reports every', t.power_state === 'asleep' ? 'Once a day (asleep)' : fmtEvery(t.report_interval_s) || '10 min (not set by tracker)'),
+        !cust && t.power_state === 'asleep' ? kv('Tracker asleep since', t.power_state_at ? fmtTime(t.power_state_at) : null, null, 'warn') : null),
     ].filter(Boolean);
 
     return { nowPanels };
@@ -715,6 +719,7 @@
     'Not reporting': ['Tracker not reporting', 'Repair'], 'Check engine': ['Check engine light', 'Repair'], 'Fault codes': ['Engine fault codes', 'Repair'],
     Generator: ['Generator fault', 'Repair'], Jacks: ['Leveling jacks fault', 'Repair'], 'No internet': ['No internet on the truck', 'Repair'],
     'On cellular with power on': ['On cellular while powered (truck Wi-Fi down)', 'Repair'],
+    'Tracker asleep (low battery)': ['Tracker backup battery low (tracker asleep)', 'Repair'],
   };
   const OVERDUE_TYPE = { 'Engine oil change overdue': 'engine_oil', 'Generator oil change overdue': 'generator_oil' };
   const warningPreset = (w) => {

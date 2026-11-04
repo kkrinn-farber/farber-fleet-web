@@ -972,7 +972,7 @@
       count.textContent = rows.length === work.length ? `${work.length} records` : `${rows.length} of ${work.length} records`;
       tbody.replaceChildren(...(rows.length ? rows.map((w) => h('tr', null,
         h('td', { class: 'first nowrap', 'data-label': 'Date' }, h('div', { text: fmtDay(w.done_on) }), ticketLink(w.ticket_no)),
-        h('td', { 'data-label': 'Type' }, h('span', { class: 'pill ' + (CAT_TONE[w.category] || 'muted'), text: w.category })),
+        h('td', { 'data-label': 'Type' }, h('span', { class: 'pill ' + tagTone({ status: 'Done' }), text: w.category })),
         h('td', { 'data-label': 'Work' }, h('div', { class: 'work-title' }, h('a', { href: '#ticket-' + w.ticket_no, text: w.title })), w.notes ? h('div', { class: 'note', text: w.notes }) : null),
         h('td', { 'data-label': 'Mileage', class: 'nowrap num', text: present(w.odometer_mi) ? num(w.odometer_mi) + ' mi' : '—' }),
         h('td', { 'data-label': 'Gen hours', class: 'nowrap num', text: present(w.hours) ? num(w.hours, Number.isInteger(w.hours) ? 0 : 1) + ' h' : '—' }),
@@ -1171,8 +1171,8 @@
       h('h1', { class: 'title', text: k.title }),
       h('div', { class: 'meta' },
         h('span', { class: 'pill ' + (REQ_TONE[k.status] || 'muted'), text: k.status }),
-        h('span', { class: 'pill ' + (URG_TONE[k.urgency] || 'muted'), text: k.urgency }),
-        h('span', { class: 'pill ' + (CAT_TONE[k.category] || 'muted'), text: k.category }),
+        h('span', { class: 'pill ' + tagTone(k, URG_TONE[k.urgency]), text: k.urgency }),
+        h('span', { class: 'pill ' + tagTone(k, CAT_TONE[k.category]), text: k.category }),
         h('span', { text: (k.source === 'Customer' ? 'Requested by ' + (k.requester_name || 'the customer') : 'Opened by Farber') + ' · ' + fmtTime(k.created_at) }),
         k.can_edit && k.warning_key ? h('a', { class: 'why', href: '#warnings', text: 'For the warning: ' + k.warning_key }) : null),
     ];
@@ -1293,7 +1293,7 @@
       h('td', { class: 'first nowrap', 'data-label': 'Ticket' }, canOpenTickets() ? ticketLink(x.ticket_no) : '#' + x.ticket_no),
       h('td', { class: 'nowrap', 'data-label': 'Requested' }, h('div', { text: fmtDay(x.created_at) }), !cust && x.requester_name ? h('div', { class: 'note', text: x.requester_name }) : null),
       h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, canOpenTickets() ? h('a', { href: '#ticket-' + x.ticket_no, text: x.title }) : x.title), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
-      h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + (URG_TONE[x.urgency] || 'muted'), text: x.urgency })),
+      h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + tagTone(x, URG_TONE[x.urgency]), text: x.urgency })),
       h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + (REQ_TONE[x.status] || 'muted'), text: x.status })),
       h('td', { 'data-label': 'Scheduled', class: 'nowrap' }, h('div', { text: x.scheduled_for ? fmtDay(x.scheduled_for) : '—' }), x.assigned_to ? h('div', { class: 'note', text: x.assigned_to }) : null)))))
     : h('p', { class: 'muted', text: cust ? 'You haven’t requested service for this truck yet.' : 'No open tickets for this truck.' }));
@@ -1304,6 +1304,8 @@
   const URG_TONE = { Urgent: 'bad', Normal: 'muted', Low: 'muted' };
   // customers open their own tickets; staff need Service or admin
   const canOpenTickets = () => isCustomer() || isServiceView();
+  // closed tickets (done or cancelled) show urgency and type in gray
+  const tagTone = (k, tone) => (['Done', 'Cancelled'].includes(k.status) ? 'muted' : tone || 'muted');
   const renderRequests = async (r, token) => {
     const reqs = await rpc('web_service_requests');
     if (token !== renderToken) return;
@@ -1328,7 +1330,7 @@
         h('td', { 'data-label': 'Customer' }, h('div', { text: x.requester_name || (x.source === 'Farber' ? 'Farber' : x.requested_by) || '—' }), x.company ? h('div', { class: 'note', text: x.company }) : null,
           x.req_contact_name && x.req_contact_name !== x.requester_name ? h('div', { class: 'note', text: 'Contact: ' + [x.req_contact_name, x.req_contact_phone].filter(Boolean).join(' · ') }) : null),
         h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title' }, h('a', { href: '#ticket-' + x.ticket_no, text: x.title })), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
-        h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + (URG_TONE[x.urgency] || 'muted'), text: x.urgency })),
+        h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + tagTone(x, URG_TONE[x.urgency]), text: x.urgency })),
         h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + (REQ_TONE[x.status] || 'muted'), text: x.status })),
         h('td', { 'data-label': 'Scheduled', class: 'nowrap' }, h('div', { text: x.scheduled_for ? fmtDay(x.scheduled_for) : '—' }), x.assigned_to ? h('div', { class: 'note', text: x.assigned_to }) : null)))
         : [h('tr', null, h('td', { colspan: '8', class: 'muted', text: 'No tickets here.' }))]));

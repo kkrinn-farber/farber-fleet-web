@@ -384,7 +384,7 @@
 
   // ---------- fleet list
   const renderFleet = async (r, token) => {
-    const [kpis, fleet] = await Promise.all([rpc('web_kpis'), rpc('web_fleet')]);
+    const [kpis, fleet, openReq] = await Promise.all([rpc('web_kpis'), rpc('web_fleet'), isServiceView() ? rpc('web_open_requests') : Promise.resolve(null)]);
     if (token !== renderToken) return;
     const k = kpis[0] || {};
     const warnings = fleet.filter((t) => t.health === 'Warning').length;
@@ -413,6 +413,8 @@
         h('div', { class: 'tile' }, h('h3', { text: 'Trucks' }), h('span', { class: 'big', text: num(k.trucks_total) }), h('span', { class: 'sub', text: `${num(k.trucks_online)} online now` })),
         sales ? null : h('a', { class: 'tile', href: '#offline' }, h('h3', { text: 'Trucks offline' }), h('span', { class: 'big' + (k.trucks_offline ? ' bad' : ''), text: num(k.trucks_offline) }), h('span', { class: 'sub', text: 'No report for 10 minutes · open list →' })),
         sales ? null : h('a', { class: 'tile', href: '#shocks' }, h('h3', { text: 'Shocks this week' }), h('span', { class: 'big', text: num(k.shocks_7d) }), h('span', { class: 'sub', text: `${num(k.shocks_24h)} in the last 24 hours · open list →` })),
+        openReq ? h('a', { class: 'tile', href: '#requests' }, h('h3', { text: 'Open service requests' }), h('span', { class: 'big' + (openReq.urgent ? ' bad' : openReq.new ? ' warn' : ''), text: num(openReq.open) }),
+          h('span', { class: 'sub', text: `${num(openReq.new)} new · ${num(openReq.urgent)} urgent · open list →` })) : null,
         sales ? null : h('a', { class: 'tile', href: '#warnings' }, h('h3', { text: 'Trucks with warnings' }), h('span', { class: 'big' + (warnings ? ' warn' : ''), text: num(warnings) }), h('span', { class: 'sub', text: 'Faults, connection, overdue maintenance · open list →' }))),
       h('div', { class: 'toolbar' }, search, count),
       list);
@@ -527,7 +529,8 @@
 
   const renderTruck = async (r, token) => {
     const id = r.id;
-    const [trows, maint, events] = await Promise.all([rpc('web_truck', { p_truck: id }), rpc('web_truck_maint', { p_truck: id }), rpc('web_truck_events', { p_truck: id })]);
+    const [trows, maint, events, reqs] = await Promise.all([rpc('web_truck', { p_truck: id }), rpc('web_truck_maint', { p_truck: id }), rpc('web_truck_events', { p_truck: id }),
+      isServiceView() ? rpc('web_truck_requests', { p_truck: id }) : Promise.resolve(null)]);
     if (token !== renderToken) return;
     const t = trows[0];
     if (!t) { app.replaceChildren(h('a', { class: 'back', href: '#trucks', text: '← All trucks' }), h('div', { class: 'empty', text: `There is no truck ${id}.` })); return; }
@@ -617,6 +620,8 @@
       isServiceView() ? h('div', { class: 'actions service-actions' }, Object.entries(SERVICE_PAGES).map(([k, label]) =>
         h('a', { class: 'btn', href: '#' + k + '-' + encodeURIComponent(t.truck_id), text: label }))) : null,
       maintTable(maintRows),
+      reqs ? h('div', { class: 'section-head' }, h('h2', { text: 'Service requests' }), h('a', { class: 'note', href: '#requests', text: 'All service requests →' })) : null,
+      reqs ? truckRequestsCard(reqs, false) : null,
       h('div', { class: 'section-head' }, h('h2', { text: 'Events' }), h('p', { class: 'note', text: 'Last 30 days, with when and where each warning started' })),
       h('div', { class: 'card scroll' }, eventRows.length ? h('table', { class: 'stack' },
         h('thead', null, h('tr', null, ['When', 'Event', 'Where'].map((x) => h('th', { text: x })))),
@@ -970,6 +975,17 @@
         h('p', { class: 'muted', style: 'margin-top:6px', text: 'Here you’ll be able to tell Farber Service what your truck needs: maintenance, a repair or a breakdown. Farber will get back to you to schedule it. This page is being built.' })));
   };
 
+  // one truck's service requests (truck page and customer page)
+  const truckRequestsCard = (reqs, cust) => h('div', { class: 'card scroll' }, reqs.length ? h('table', { class: 'stack work-table' },
+    h('thead', null, h('tr', null, ['Requested', 'Request', 'Urgency', 'Status', 'Scheduled'].map((x) => h('th', { text: x })))),
+    h('tbody', null, reqs.map((x) => h('tr', null,
+      h('td', { class: 'first nowrap', 'data-label': 'Requested' }, h('div', { text: fmtDay(x.created_at) }), !cust && x.requester_name ? h('div', { class: 'note', text: x.requester_name }) : null),
+      h('td', { 'data-label': 'Request' }, h('div', { class: 'work-title', text: x.title }), h('div', { class: 'note', text: [x.category, x.details].filter(Boolean).join(' · ') })),
+      h('td', { 'data-label': 'Urgency' }, h('span', { class: 'pill ' + (URG_TONE[x.urgency] || 'muted'), text: x.urgency })),
+      h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + (REQ_TONE[x.status] || 'muted'), text: x.status })),
+      h('td', { 'data-label': 'Scheduled', class: 'nowrap' }, h('div', { text: x.scheduled_for ? fmtDay(x.scheduled_for) : '—' }), x.assigned_to ? h('div', { class: 'note', text: x.assigned_to }) : null)))))
+    : h('p', { class: 'muted', text: cust ? 'You haven’t requested service for this truck yet.' : 'No service requests for this truck.' }));
+
   // ---------- service requests (Service users and admins)
   const REQ_STATUS = ['New', 'In progress', 'Scheduled', 'Done', 'Cancelled'];
   const REQ_TONE = { New: 'accent', 'In progress': 'warn', Scheduled: 'ok', Done: 'muted', Cancelled: 'muted' };
@@ -1023,12 +1039,13 @@
   const renderCustomer = async (r, token) => {
     // staff preview of the customer page: admins and Sales
     if (!isCustomer() && !isAdmin() && !isSalesView()) { location.replace('#truck-' + encodeURIComponent(r.id)); return; }
-    let t, maint, mine = [];
+    let t, maint, mine = [], reqs = [];
     try {
-      [t, maint, mine] = await Promise.all([
+      [t, maint, mine, reqs] = await Promise.all([
         rpc('web_customer_truck', { p_truck: r.id }),
         rpc('web_customer_maint', { p_truck: r.id }),
-        isCustomer() ? rpc('web_my_trucks') : Promise.resolve([])]);
+        isCustomer() ? rpc('web_my_trucks') : Promise.resolve([]),
+        rpc('web_truck_requests', { p_truck: r.id })]);
     } catch (err) {
       if (!/Not allowed/i.test(err.message || '')) throw err;
       app.replaceChildren(h('div', { class: 'empty', text: 'This truck isn’t linked to your account.' },
@@ -1057,6 +1074,8 @@
       h('div', { class: 'actions' }, h('a', { class: 'btn', href: '#request-' + encodeURIComponent(t.truck_id), text: 'Request service' })),
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' }, panel('Build and delivery', kv('Build date', t.build_date), kv('Delivery date', t.delivery_date), kv('In service', t.in_service))),
+      h('div', { class: 'section-head' }, h('h2', { text: 'Service requests' }), h('p', { class: 'note', text: 'Open requests first' })),
+      truckRequestsCard(reqs, true),
       h('div', { class: 'section-head' }, h('h2', { text: 'Maintenance' })),
       maintTable(maintRows),
       h('div', { class: 'section-head' }, h('h2', { text: 'Right now' }), h('p', { class: 'note', text: 'Latest report from your truck.' })),

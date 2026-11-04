@@ -676,7 +676,7 @@
       box.replaceChildren(...(shown.length ? shown.map((t) => h('section', { class: 'card warn-card' },
         h('header', { class: 'wc-head' },
           h('a', { class: 'wc-truck', href: '#truck-' + encodeURIComponent(t.truck_id) }, h('span', { class: 'plate', text: t.truck_id }), h('span', { text: t.truck_name || 'No name set' })),
-          h('div', { class: 'wc-meta' }, statusPill(t.status), h('span', { class: 'note', text: t.last_seen ? 'Last report ' + ago(t.minutes_since_seen) : 'Never reported' }))),
+          h('div', { class: 'wc-meta' }, h('span', { class: 'note', text: t.last_seen ? 'Last report ' + ago(t.minutes_since_seen) : 'Never reported' }))),
         h('ul', { class: 'wc-list' }, t.list.map((x) => h('li', { class: 'wc-row' + (x.tks.length ? ' has-ticket' : '') },
           h('span', { class: 'wc-warn' }, h('span', { class: 'wc-dot', 'aria-hidden': 'true' }), x.w),
           ticketCell(t, x))))))

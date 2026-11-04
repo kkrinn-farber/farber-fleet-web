@@ -73,6 +73,7 @@
   // Sales (or an admin viewing as Sales) sees connection status only, no network details
   const isSalesView = () => !!me && !isAdmin() && (viewAs || me.user_type) === 'sales';
   const NET_WARNINGS = ['No internet', 'On cellular with power on', 'Unusual upload volume', 'Tracker code refused'];
+  // Sales sees "Tracker on backup battery" (it matters for the customer's truck); customers don't (hidden by the server)
   // Service (or an admin) gets the work-history / maintenance buttons
   const isServiceView = () => !!me && (isAdmin() || (viewAs || me.user_type) === 'service');
   // Service, Sales and admins read tickets, warnings and shocks; only Service and admins change tickets
@@ -587,6 +588,7 @@
     if (w === 'Generator 2') return g[1] ? 'Generator: ' + g[1] : '';
     if (['Check engine', 'Fault codes', 'Engine oil change overdue'].includes(w)) return 'Truck engine';
     if (w === 'Jacks') return 'Jacks';
+    if (w === 'Tracker on backup battery') return 'Electrical';
     if (['Not reporting', 'No internet', 'On cellular with power on', 'Tracker asleep (low battery)', 'Unusual upload volume', 'Tracker code refused'].includes(w)) return 'Networking';
     return '';
   };
@@ -649,7 +651,8 @@
         needs('aux') && kv(sy ? 'Off-grid' : 'Aux', num(t.aux_v, 1), ' V', tone('aux_v', t.aux_v)),
         needs('aux') && kv(sy ? 'Off-grid current' : 'Aux current', num(t.aux_a, 1), ' A'),
         needs('aux') && sy && sy.battery && sy.battery.ah ? kv('Off-grid bank', batteryText(sy.battery)) : null,
-        kv('Tracker battery', num(t.board_v, 2), ' V', tone('board_v', t.board_v))),
+        kv('Tracker battery', num(t.board_v, 2), ' V', tone('board_v', t.board_v)),
+        cust ? null : kv('Tracker power', t.tracker_power, null, t.tracker_power === 'Backup battery' ? 'warn' : null)),
       needs('generator') && panel(genNames[0] || 'Generator',
         kv('Generator', t.generator, null, t.generator === 'Error' ? 'bad' : null), kv('Error code', t.gen_error_code),
         kv('Hour meter', num(t.gen_hours, 1), ' h'), kv('Generator battery', num(t.gen_battery_v, 1), ' V'),
@@ -875,6 +878,7 @@
     'Slideout out while moving': ['Slideout was out while driving', 'Inspection'], 'Awning out while moving': ['Awning was out while driving', 'Inspection'],
     'Unusual upload volume': ['Tracker sending far too much data (faulty or stolen tracker?)', 'Repair'],
     'Tracker code refused': ['Uploads with a wrong truck code (old or stolen tracker?)', 'Repair'],
+    'Tracker on backup battery': ['Tracker lost truck power (running on its backup battery)', 'Repair'],
   };
   const OVERDUE_TYPE = { 'Engine oil change overdue': 'engine_oil', 'Generator oil change overdue': 'generator_oil' };
   const warningPreset = (w) => {

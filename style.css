@@ -339,3 +339,11 @@ fieldset > .note { margin: -2px 0 10px; }
 .assign { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .assign select { min-width: 0; max-width: 240px; }
 .note.warn, td .warn { color: var(--warn, #a15c00); }
+
+/* Truck systems (Add / Edit truck) */
+.check { display: flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; margin: 4px 0; }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); flex: none; }
+.checks { display: grid; gap: 2px; }
+.field .label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+.count-names { display: grid; grid-template-columns: 5rem 1fr; gap: 8px; align-items: start; }
+.name-boxes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr)); gap: 8px; }

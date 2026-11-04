@@ -550,9 +550,40 @@
   };
 
 
+  // ---------- truck systems: what a truck has decides what's shown (and what its tracker reads)
+  const SHORE_AMPS = [0, 15, 20, 30, 50, 100];
+  const SLIDE_TEXT = { I: 'In', O: 'Out', M: 'Moving', E: 'Error', '-': null };
+  const AWNING_TEXT = { I: 'Retracted', O: 'Extended', M: 'Moving', E: 'Error', '-': null };
+  const sysOf = (t) => t.systems || null;
+  const sysTanks = (sy) => ['fresh', 'gray', 'black'].filter((k) => sy.plumbing && sy.plumbing[k]);
+  const sysWater = (sy) => sysTanks(sy).length > 0 || !!(sy.plumbing && sy.plumbing.jug);
+  const listText = (a) => (a && a.length ? a.join(', ') : 'None');
+  const systemsPanel = (sy) => sy ? panel('Systems',
+    kv('Truck engine', sy.engine ? 'Yes' : 'No (trailer)'),
+    kv('Water', [...sysTanks(sy).map((k) => k[0].toUpperCase() + k.slice(1) + ' tank'), sy.plumbing && sy.plumbing.jug ? 'Jug system' : null].filter(Boolean).join(', ') || 'None'),
+    kv('Leveling jacks', sy.jacks ? 'Yes' : 'No'), kv('Solar', sy.solar ? 'Yes' : 'No'),
+    kv('Shore power', sy.shore_amps ? sy.shore_amps + ' A' : 'None'),
+    kv('Slideouts', listText(sy.slideouts)), kv('Generators', listText(sy.generators)), kv('Awnings', listText(sy.awnings))) : null;
+
   // shared by the staff truck page and the customer page (cust = hide IP and firmware)
   const nowPanelsFor = (t, maint, cust) => {
-    const needs = (k) => t['has_' + k];
+    const sy = sysOf(t);
+    // with systems set: what the truck has; without (older trucks): whatever the data shows
+    const needs = (k) => {
+      if (!sy) return t['has_' + k];
+      if (k === 'generator') return (sy.generators || []).length > 0;
+      if (k === 'shore') return sy.shore_amps > 0;
+      if (k === 'solar') return !!sy.solar;
+      if (k === 'jacks') return !!sy.jacks;
+      if (k === 'plumbing') return sysWater(sy);
+      return t['has_' + k];
+    };
+    const engine = sy ? !!sy.engine : true;
+    const genNames = sy ? (sy.generators || []) : (t.has_generator ? ['Generator'] : []);
+    const unitRows = (names, states, text) => (names || []).map((n, i) => {
+      const c = (states || '')[i] || '-';
+      return kv(n, text[c] ?? null, null, c === 'E' ? 'bad' : c === 'M' ? 'warn' : null);
+    });
     // oil changes (and any other due-date items) shown inside the Truck and Generator cards
     const hrsFmt = (v, d) => num(v, d === undefined ? (Number.isInteger(Number(v)) ? 0 : 1) : d) + ' h';
     const dueRows = (m) => {
@@ -571,10 +602,11 @@
     };
     const genMaint = (maint || []).filter((m) => /^generator/.test(m.code));
     const truckMaint = (maint || []).filter((m) => !/^generator/.test(m.code) || !needs('generator'));
+    const tanks = sy ? sysTanks(sy) : ['fresh', 'gray', 'black'];
     const nowPanels = [
       needs('temps') && panel('Temperatures',
         [1, 2, 3, 4, 5, 6].map((i) => kv(t['temp' + i + '_label'] || 'Temp ' + i, num(t['temp' + i + '_f'], 1), '°F'))),
-      panel('Truck',
+      engine && panel('Truck',
         kv('Engine', t.engine), kv('Speed', num(t.speed_mph), ' mph'), kv('RPM', num(t.rpm)), kv('Mileage', num(t.odometer_mi), ' mi'), kv('Fuel', num(t.fuel_pct), '%'),
         needs('oil') && kv('Oil pressure', num(t.oil_psi), ' psi'), kv('Coolant', num(t.coolant_f), '°F'),
         kv('Fault codes', present(t.dtc_count) ? t.dtc_count : null, null, t.dtc_count > 0 ? 'bad' : null),
@@ -584,14 +616,23 @@
         needs('aux') && kv('Aux', num(t.aux_v, 1), ' V', tone('aux_v', t.aux_v)),
         needs('aux') && kv('Aux current', num(t.aux_a, 1), ' A'),
         kv('Tracker battery', num(t.board_v, 2), ' V', tone('board_v', t.board_v))),
-      needs('generator') && panel('Generator',
+      needs('generator') && panel(genNames[0] || 'Generator',
         kv('Generator', t.generator, null, t.generator === 'Error' ? 'bad' : null), kv('Error code', t.gen_error_code),
         kv('Hour meter', num(t.gen_hours, 1), ' h'), kv('Generator battery', num(t.gen_battery_v, 1), ' V'),
         genMaint.flatMap(dueRows)),
-      needs('shore') && panel('Shore power', kv('Shore power', t.shore), kv('Draw', num(t.shore_amps, 1), ' A')),
+      genNames.length > 1 && panel(genNames[1],
+        kv('Generator', t.generator2, null, t.generator2 === 'Error' ? 'bad' : null), kv('Error code', t.gen2_error_code),
+        kv('Hour meter', num(t.gen2_hours, 1), ' h'), kv('Generator battery', num(t.gen2_battery_v, 1), ' V')),
+      needs('shore') && panel('Shore power', sy && sy.shore_amps ? kv('Service', sy.shore_amps + ' A') : null,
+        kv('Shore power', t.shore), kv('Draw', num(t.shore_amps, 1), ' A', sy && sy.shore_amps && t.shore_amps > sy.shore_amps * 0.8 ? 'warn' : null)),
       needs('solar') && panel('Solar', kv('Output', num(t.solar_w), ' W')),
-      needs('plumbing') && panel('Water', kv('Fresh', num(t.fresh_pct), '%'), kv('Gray', num(t.gray_pct), '%'), kv('Black', num(t.black_pct), '%'), kv('Pump', t.pump)),
+      needs('plumbing') && panel('Water',
+        tanks.includes('fresh') && kv('Fresh', num(t.fresh_pct), '%'),
+        sy && sy.plumbing && sy.plumbing.jug && kv('Fresh water', 'Jug system'),
+        tanks.includes('gray') && kv('Gray', num(t.gray_pct), '%'), tanks.includes('black') && kv('Black', num(t.black_pct), '%'), kv('Pump', t.pump)),
       needs('jacks') && panel('Jacks', kv('Jacks', t.jacks, null, t.jacks === 'Error' ? 'bad' : null), kv('Error code', t.jacks_error_code)),
+      sy && (sy.slideouts || []).length > 0 && panel('Slideouts', unitRows(sy.slideouts, t.slide_states, SLIDE_TEXT)),
+      sy && (sy.awnings || []).length > 0 && panel('Awnings', unitRows(sy.awnings, t.awning_states, AWNING_TEXT)),
       panel(cust ? 'Location' : 'Location and network',
         h('div', { class: 'kv' }, h('span', { text: 'Near' }), present(t.lat)
           ? h('a', { href: mapUrl(t.lat, t.lon), target: '_blank', rel: 'noopener', text: [t.near_city, t.near_state].filter(Boolean).join(', ') || 'Map' })
@@ -635,17 +676,20 @@
       try {
         const rows = await rpc('web_history', { p_truck: id, p_hours: historyHours });
         if (tk !== renderToken) return;
+        const sy = sysOf(t);
+        const gens = sy ? (sy.generators || []) : ['Generator'];
+        const tanksH = sy ? sysTanks(sy) : ['fresh', 'gray', 'black'];
         const defs = [
           ['Speed', [{ key: 'speed_mph', label: 'Speed' }], ' mph', 0],
           ['Temperatures 1–3', [1, 2, 3].map((i) => ({ key: 'temp' + i + '_f', label: t['temp' + i + '_label'] || 'Temp ' + i })), '°F', 1],
           ['Temperatures 4–6', [4, 5, 6].map((i) => ({ key: 'temp' + i + '_f', label: t['temp' + i + '_label'] || 'Temp ' + i })), '°F', 1],
           ['Batteries', [{ key: 'chassis_v', label: 'Chassis' }, { key: 'aux_v', label: 'Aux' }], ' V', 2],
-          ['Fuel', [{ key: 'fuel_pct', label: 'Fuel' }], '%', 0],
-          ['Water tanks', [{ key: 'fresh_pct', label: 'Fresh' }, { key: 'gray_pct', label: 'Gray' }, { key: 'black_pct', label: 'Black' }], '%', 0],
-          ['Solar', [{ key: 'solar_w', label: 'Solar' }], ' W', 0],
-          ['Shore power draw', [{ key: 'shore_amps', label: 'Shore' }], ' A', 1],
-          ['Generator battery', [{ key: 'gen_battery_v', label: 'Generator battery' }], ' V', 2],
-        ];
+          (!sy || sy.engine) && ['Fuel', [{ key: 'fuel_pct', label: 'Fuel' }], '%', 0],
+          tanksH.length && ['Water tanks', tanksH.map((k) => ({ key: k + '_pct', label: k[0].toUpperCase() + k.slice(1) })), '%', 0],
+          (!sy || sy.solar) && ['Solar', [{ key: 'solar_w', label: 'Solar' }], ' W', 0],
+          (!sy || sy.shore_amps > 0) && ['Shore power draw', [{ key: 'shore_amps', label: 'Shore' }], ' A', 1],
+          gens.length && ['Generator battery', [{ key: 'gen_battery_v', label: gens[0] }, gens[1] ? { key: 'gen2_battery_v', label: gens[1] } : null].filter(Boolean), ' V', 2],
+        ].filter(Boolean);
         // draw at the real size so the text stays readable: work out the column width first
         const boxW = histBox.clientWidth || 360;
         const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -675,7 +719,7 @@
         panel('Contact', kv('Name', t.contact_name), kv('Title', t.contact_title),
           h('div', { class: 'kv' }, h('span', { text: 'Phone' }), t.contact_phone ? h('a', { href: 'tel:' + String(t.contact_phone).replace(/[^0-9+]/g, ''), text: t.contact_phone }) : h('b', { text: '—' })),
           h('div', { class: 'kv' }, h('span', { text: 'Email' }), t.contact_email ? h('a', { href: 'mailto:' + t.contact_email, text: t.contact_email }) : h('b', { text: '—' }))),
-        panel('Farber team', team)];
+        panel('Farber team', team), systemsPanel(sysOf(t))].filter(Boolean);
     const customerBtn = h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' });
     // No tracker yet (new truck) or one assigned that hasn't sent anything yet
     const trackerNote = t.status === 'No tracker'
@@ -735,6 +779,8 @@
     Generator: ['Generator fault', 'Repair'], Jacks: ['Leveling jacks fault', 'Repair'], 'No internet': ['No internet on the truck', 'Repair'],
     'On cellular with power on': ['On cellular while powered (truck Wi-Fi down)', 'Repair'],
     'Tracker asleep (low battery)': ['Tracker backup battery low (tracker asleep)', 'Repair'],
+    'Generator 2': ['Second generator fault', 'Repair'], Slideout: ['Slideout fault', 'Repair'], Awning: ['Awning fault', 'Repair'],
+    'Slideout out while moving': ['Slideout was out while driving', 'Inspection'], 'Awning out while moving': ['Awning was out while driving', 'Inspection'],
   };
   const OVERDUE_TYPE = { 'Engine oil change overdue': 'engine_oil', 'Generator oil change overdue': 'generator_oil' };
   const warningPreset = (w) => {
@@ -1127,12 +1173,61 @@
       selects[role] = sel;
       return h('div', { class: 'field' }, h('label', { for: id, text: label }), sel);
     });
+    // Systems: what this truck has. New trucks start with just the engine.
+    const sys0 = t.systems || { engine: true, plumbing: {}, jacks: false, solar: false, shore_amps: 0, slideouts: [], generators: [], awnings: [] };
+    const chk = (label, on, hint) => {
+      const id = 's-' + Math.random().toString(36).slice(2, 8);
+      const box = h('input', { type: 'checkbox', id });
+      box.checked = !!on;
+      return { box, wrap: h('label', { class: 'check', for: id }, box, h('span', { text: label }), hint ? h('span', { class: 'note', text: ' ' + hint }) : null) };
+    };
+    const sysEngine = chk('Truck engine', sys0.engine, '(off for trailers)');
+    const sysTank = { fresh: chk('Fresh tank', sys0.plumbing && sys0.plumbing.fresh), gray: chk('Gray tank', sys0.plumbing && sys0.plumbing.gray),
+      black: chk('Black tank', sys0.plumbing && sys0.plumbing.black), jug: chk('Jug system', sys0.plumbing && sys0.plumbing.jug, '(fresh water from jugs)') };
+    const sysJacks = chk('Leveling jacks', sys0.jacks);
+    const sysSolar = chk('Solar', sys0.solar);
+    const shoreSel = h('select', { id: 's-shore' }, SHORE_AMPS.map((a) => h('option', { value: String(a), text: a ? a + ' A' : 'None' })));
+    shoreSel.value = String(sys0.shore_amps || 0);
+    // a count (0..max) and a name box for each unit
+    const named = (label, unit, max, names) => {
+      const id = 's-' + unit.toLowerCase();
+      const sel = h('select', { id }, Array.from({ length: max + 1 }, (_, i) => h('option', { value: String(i), text: String(i) })));
+      sel.value = String((names || []).length);
+      const boxes = h('div', { class: 'name-boxes' });
+      const kept = [...(names || [])];
+      const draw = () => {
+        [...boxes.children].forEach((inp, i) => { kept[i] = inp.value; });
+        const n = Number(sel.value);
+        boxes.replaceChildren(...Array.from({ length: n }, (_, i) => h('input', { type: 'text', maxlength: '40', 'aria-label': `${unit} ${i + 1} name`,
+          placeholder: `${unit} ${i + 1}`, value: kept[i] || '' })));
+      };
+      sel.addEventListener('change', draw);
+      draw();
+      return { get: () => [...boxes.children].map((inp, i) => clean(inp.value) || `${unit} ${i + 1}`),
+        wrap: h('div', { class: 'field wide' }, h('label', { for: id, text: label }), h('div', { class: 'count-names' }, sel, boxes)) };
+    };
+    const sysSlides = named('Slideouts (how many, and their names)', 'Slideout', 6, sys0.slideouts);
+    const sysGens = named('Generators (how many, and their names)', 'Generator', 2, sys0.generators);
+    const sysAwnings = named('Awnings (how many, and their names)', 'Awning', 6, sys0.awnings);
+    const sysGet = () => ({ engine: sysEngine.box.checked,
+      plumbing: Object.fromEntries(Object.entries(sysTank).map(([k, c]) => [k, c.box.checked])),
+      jacks: sysJacks.box.checked, solar: sysSolar.box.checked, shore_amps: Number(shoreSel.value),
+      slideouts: sysSlides.get(), generators: sysGens.get(), awnings: sysAwnings.get() });
+    const systemsSet = h('fieldset', null, h('legend', { text: 'Systems' }),
+      h('p', { class: 'note', style: 'margin-bottom:8px', text: 'What this truck has. It decides what the website shows and what the truck’s tracker reads and sends.' }),
+      h('div', { class: 'grid' },
+        h('div', { class: 'field' }, h('span', { class: 'label', text: 'Vehicle' }), sysEngine.wrap),
+        h('div', { class: 'field' }, h('span', { class: 'label', text: 'Plumbing' }), h('div', { class: 'checks' }, Object.values(sysTank).map((c) => c.wrap))),
+        h('div', { class: 'field' }, h('span', { class: 'label', text: 'Equipment' }), h('div', { class: 'checks' }, sysJacks.wrap, sysSolar.wrap)),
+        h('div', { class: 'field' }, h('label', { for: 's-shore', text: 'Shore power' }), shoreSel),
+        sysSlides.wrap, sysGens.wrap, sysAwnings.wrap));
+
     const nums = data.trucks.map((x) => Number(x.truck_id)).filter((n) => Number.isInteger(n) && n > 0);
     const idField = isNew ? field('Truck number', { autocomplete: 'off', inputmode: 'numeric', maxlength: '32' }) : null;
     if (idField) idField.input.value = nums.length ? String(Math.max(...nums) + 1) : '';
 
     const snapshot = () => JSON.stringify({ v: Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.type === 'date' ? el.value : clean(el.value)])),
-      team: Object.fromEntries(Object.entries(selects).map(([k, el]) => [k, el.value])) });
+      team: Object.fromEntries(Object.entries(selects).map(([k, el]) => [k, el.value])), systems: sysGet() });
     let start = '';
     const status = h('span', { class: 'status', 'aria-live': 'polite' });
     const save = h('button', { class: 'btn', type: 'submit', text: isNew ? 'Add truck' : 'Save changes' });
@@ -1153,6 +1248,7 @@
         idField ? (idField.wrap.classList.add('wide'), idField.wrap) : null,
         mk('name', 'Name', { maxlength: '64', placeholder: 'No name set' }, true),
         mk('build_date', 'Build date', { type: 'date' }), mk('delivery_date', 'Delivery date', { type: 'date' }))),
+      systemsSet,
       h('fieldset', null, h('legend', { text: 'Address' }), h('div', { class: 'grid' },
         mk('company', 'Company', { maxlength: '120' }, true),
         mk('address_line1', 'Street', { maxlength: '120' }, true), mk('address_line2', 'Building, suite or unit', { maxlength: '120' }, true),
@@ -1182,7 +1278,7 @@
         else if (data.trucks.some((x) => x.truck_id.toLowerCase() === newId.toLowerCase())) problems.push(`Truck ${newId} is already in the database.`);
       }
       if (problems.length) { status.className = 'status bad'; status.textContent = problems.join(' '); return; }
-      const payload = { ...v, team: Object.fromEntries(Object.entries(selects).map(([k, el]) => [k, el.value])) };
+      const payload = { ...v, team: Object.fromEntries(Object.entries(selects).map(([k, el]) => [k, el.value])), systems: sysGet() };
       save.disabled = true; undo.disabled = true;
       status.className = 'status busy'; status.textContent = isNew ? 'Adding…' : 'Saving…';
       try {

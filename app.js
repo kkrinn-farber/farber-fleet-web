@@ -601,6 +601,7 @@
         !cust && t.network === 'Cellular' ? kv('Last on Wi-Fi', t.last_wifi_at ? ago(Math.round((Date.now() - new Date(t.last_wifi_at).getTime()) / 60000)) : 'Never') : null,
         cust ? null : kv('IP address', t.ip_addr),
         cust ? null : kv('Firmware', t.fw),
+        cust || !t.tracker ? null : kv('Tracker board', t.tracker.device_id),
         cust ? null : kv('Reports every', t.power_state === 'asleep' ? 'Once a day (asleep)' : fmtEvery(t.report_interval_s) || '10 min (not set by tracker)'),
         !cust && t.power_state === 'asleep' ? kv('Tracker asleep since', t.power_state_at ? fmtTime(t.power_state_at) : null, null, 'warn') : null),
     ].filter(Boolean);
@@ -676,6 +677,15 @@
           h('div', { class: 'kv' }, h('span', { text: 'Email' }), t.contact_email ? h('a', { href: 'mailto:' + t.contact_email, text: t.contact_email }) : h('b', { text: '—' }))),
         panel('Farber team', team)];
     const customerBtn = h('a', { class: 'btn ghost small', href: '#customer-' + encodeURIComponent(t.truck_id), text: 'View customer page' });
+    // No tracker yet (new truck) or one assigned that hasn't sent anything yet
+    const trackerNote = t.status === 'No tracker'
+      ? h('div', { class: 'notice', role: 'status' }, h('strong', { text: 'No tracker connected to this truck.' }), ' ',
+          isAdmin() ? h('span', null, 'Power up a tracker, then assign it to ' + t.truck_id + ' on the ', h('a', { href: '#trackers', text: 'Trackers page' }), '. Readings show here once it sends.')
+            : h('span', { text: 'Readings show here once a tracker is set up.' }))
+      : t.status === 'Setting up'
+        ? h('div', { class: 'notice', role: 'status' }, h('strong', { text: 'Tracker ' + (t.tracker ? t.tracker.device_id + ' ' : '') + 'is assigned to this truck' }),
+            ' and starts sending the next time it checks in (within a minute when it’s online).')
+        : null;
     // Sales: location, truck details, warnings, tickets and the customer page
     if (isSalesView()) {
       app.replaceChildren(
@@ -683,6 +693,7 @@
         h('h1', { class: 'title' }, t.truck_id, t.truck_name ? h('span', { class: 'sub', text: ' · ' + t.truck_name }) : null),
         h('div', { class: 'meta' }, statusPill(t.status), healthPill(t.health), t.warnings ? h('a', { class: 'why', href: '#warnings', text: t.warnings }) : null,
           h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }), customerBtn),
+        trackerNote,
         h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
         h('div', { class: 'panels' }, nowPanels[nowPanels.length - 1], ...detailPanels),
         reqs ? h('div', { class: 'section-head' }, h('h2', { text: 'Service tickets' }), h('a', { class: 'note', href: '#requests', text: 'All service tickets →' })) : null,
@@ -693,10 +704,11 @@
       h('a', { class: 'back', href: '#trucks', text: '← All trucks' }),
       h('h1', { class: 'title' }, t.truck_id, t.truck_name ? h('span', { class: 'sub', text: ' · ' + t.truck_name }) : null),
       h('div', { class: 'meta' }, statusPill(t.status), healthPill(t.health), t.warnings ? h('span', { class: 'why', text: t.warnings }) : null,
-        h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }),
+        t.status === 'No tracker' || t.status === 'Setting up' ? null : h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }),
         isAdmin() ? h('a', { href: '#edit-' + encodeURIComponent(t.truck_id), text: 'Edit truck' }) : null,
         isAdmin() ? customerBtn : null,
         isAdmin() ? h('a', { class: 'btn ghost small', href: '#trackersettings-' + encodeURIComponent(t.truck_id), text: 'Tracker settings' }) : null),
+      trackerNote,
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       h('div', { class: 'panels' },
         ...detailPanels),

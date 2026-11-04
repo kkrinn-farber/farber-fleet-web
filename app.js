@@ -1071,6 +1071,51 @@
     h('div', { class: 'kv' }, h('span', { text: 'Phone' }), k.req_contact_phone ? h('a', { href: 'tel:' + String(k.req_contact_phone).replace(/[^0-9+]/g, ''), text: k.req_contact_phone }) : h('b', { text: '—' })),
     h('div', { class: 'kv' }, h('span', { text: 'Email' }), k.req_contact_email ? h('a', { href: 'mailto:' + k.req_contact_email, text: k.req_contact_email }) : h('b', { text: '—' })));
 
+  // quick status buttons (Service users and admins)
+  const statusActions = (k) => {
+    const open = ['New', 'Scheduled', 'In progress'].includes(k.status);
+    const st = h('span', { class: 'status', 'aria-live': 'polite' });
+    const panelBox = h('div', { class: 'action-panel', hidden: true });
+    const run = async (action, extra, btns) => {
+      btns.forEach((b) => { b.disabled = true; }); st.className = 'status busy'; st.textContent = 'Saving…';
+      try { await rpc('web_ticket_status', { p_no: k.ticket_no, p_action: action, ...extra }); unsaved.dirty = () => false; route(); }
+      catch (err) { st.className = 'status bad'; st.textContent = friendly(err); btns.forEach((b) => { b.disabled = false; }); }
+    };
+    const showPanel = (title, fields, confirmText, onConfirm, danger) => {
+      const ok = h('button', { class: 'btn' + (danger ? ' danger' : ''), type: 'submit', text: confirmText });
+      const back = h('button', { class: 'btn ghost', type: 'button', text: 'Back', onclick: () => { panelBox.hidden = true; st.textContent = ''; } });
+      const form = h('form', { class: 'card form', novalidate: true }, h('h3', { text: title }), h('div', { class: 'grid' }, ...fields.map((x) => x.wrap)), h('div', { class: 'actions' }, ok, back));
+      form.addEventListener('submit', (e) => { e.preventDefault(); onConfirm([ok, back]); });
+      panelBox.replaceChildren(form); panelBox.hidden = false;
+      const first = fields.find((x) => x.input.tagName !== 'SELECT'); if (first) first.input.focus();
+    };
+    const doneBtn = h('button', { class: 'btn', type: 'button', text: 'Mark done', onclick: () => {
+      const date = inF('Done on', todayIso(), { type: 'date', max: todayIso() });
+      const work = areaF('What was done', k.work_done || '', { maxlength: '4000', rows: '3', placeholder: 'Parts, findings, anything the next tech should know' });
+      showPanel('Mark ticket #' + k.ticket_no + ' done', [date, work], 'Mark done', (btns) => {
+        if (!date.input.value) { st.className = 'status bad'; st.textContent = 'Pick the date it was done.'; return; }
+        run('done', { p_done_on: date.input.value, p_work_done: work.input.value.trim() }, btns);
+      });
+    } });
+    const startBtn = h('button', { class: 'btn', type: 'button', text: 'Start work', onclick: (e) => run('start', {}, [e.currentTarget]) });
+    const reasonPanel = (action, title, confirmText, danger) => () => {
+      const why = areaF(action === 'reopen' ? 'Why is it being reopened?' : 'Why is it being cancelled?', '', { maxlength: '4000', rows: '2' });
+      showPanel(title, [why], confirmText, (btns) => {
+        if (!why.input.value.trim()) { st.className = 'status bad'; st.textContent = 'Give a reason. It goes in the team notes.'; why.input.focus(); return; }
+        run(action, { p_reason: why.input.value.trim() }, btns);
+      }, danger);
+    };
+    const cancelBtn = h('button', { class: 'btn ghost', type: 'button', text: 'Cancel ticket', onclick: reasonPanel('cancel', 'Cancel ticket #' + k.ticket_no, 'Cancel ticket', true) });
+    const reopenBtn = h('button', { class: 'btn', type: 'button', text: 'Reopen ticket', onclick: reasonPanel('reopen', 'Reopen ticket #' + k.ticket_no, 'Reopen') });
+    const btns = open
+      ? [['New', 'Scheduled'].includes(k.status) ? startBtn : null, doneBtn, cancelBtn]
+      : [reopenBtn];
+    return h('div', { class: 'status-actions' },
+      h('div', { class: 'actions' }, ...btns.filter(Boolean), st,
+        !open ? h('span', { class: 'note', text: k.status === 'Done' ? `Done ${k.done_on ? fmtDay(k.done_on) : ''}. Reopening puts it back In progress${k.type_code ? ' and the oil change no longer counts until it’s marked done again' : ''}.` : 'Cancelled. Reopening puts it back In progress.' }) : null),
+      panelBox);
+  };
+
   const renderTicket = async (r, token) => {
     const no = Number(r.id);
     let k;
@@ -1099,7 +1144,7 @@
         contactPanel(k),
         panel('Ticket', kv('Ticket number', '#' + k.ticket_no), kv('Opened', fmtTime(k.created_at)), kv('Requested by', k.requester_name || (k.source === 'Farber' ? 'Farber' : null)),
           kv('Last updated', fmtTime(k.updated_at)), kv('Updated by', k.updated_by)));
-      app.replaceChildren(...head, info,
+      app.replaceChildren(...head, statusActions(k), info,
         h('div', { class: 'ticket-cols' }, h('div', null, h('div', { class: 'section-head' }, h('h2', { text: 'Ticket details' })), ticketEditor(k, {})), notesCard(k)));
     } else {
       app.replaceChildren(...head,

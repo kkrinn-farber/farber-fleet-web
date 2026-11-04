@@ -79,3 +79,6 @@ maintenance records and requests were numbered #10001–#11077, oldest first). A
 truck's Maintenance history; a finished oil change ticket ("Counts as an oil change") resets the due date.
 Only Service users and admins can edit tickets or read and write team notes. Customers can create tickets for
 their own trucks and see them read-only.
+On a ticket, Service users and admins have quick buttons: **Start work** (New/Scheduled → In progress), **Mark done**
+(asks for the date and what was done), **Cancel ticket** and **Reopen ticket** (both ask for a reason). Reopen
+works on any closed ticket, however old. Every change is written to the team notes.

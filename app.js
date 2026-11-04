@@ -143,6 +143,8 @@
     document.querySelectorAll('.staff-only').forEach((el) => { el.hidden = !signedIn || isCustomer(); });
     document.querySelectorAll('.not-sales').forEach((el) => { if (isSalesView()) el.hidden = true; });
     document.querySelectorAll('.service-only').forEach((el) => { el.hidden = !signedIn || !isServiceView(); });
+    // Service users and admins find warnings and shocks under Service; Engineering keeps them under Fleet
+    document.querySelectorAll('.not-service').forEach((el) => { if (isServiceView()) el.hidden = true; });
     document.querySelectorAll('.customer-only').forEach((el) => { el.hidden = !signedIn || !isCustomer(); });
     $('view-as').hidden = !(signedIn && realAdmin());
     $('view-as').value = viewAs || '';

@@ -296,3 +296,11 @@ fieldset > .note { margin: -2px 0 10px; }
 .wc-ticket .pill { justify-self: start; }
 .wc-title { font-size: 14px; }
 @media (max-width: 700px) { .wc-row { grid-template-columns: 1fr; gap: 6px; } .wc-ticket { grid-template-columns: auto auto minmax(0, 1fr); } .wc-head, .wc-list { padding-left: 14px; padding-right: 14px; } }
+/* warnings: faults indented under their truck */
+.wc-list { position: relative; padding: 4px 20px 6px 58px; }
+.wc-list::before { content: ''; position: absolute; left: 34px; top: 14px; bottom: 18px; border-left: 2px solid var(--line); }
+.wc-row { position: relative; grid-template-columns: minmax(13rem, 20rem) minmax(0, 1fr); }
+.wc-row::before { content: ''; position: absolute; left: -24px; top: 50%; width: 14px; border-top: 2px solid var(--line); }
+.wc-dot { margin-left: 0; }
+@media (max-width: 700px) { .wc-list { padding: 2px 14px 4px 40px; } .wc-list::before { left: 22px; } .wc-row::before { left: -18px; width: 10px; } }
+@media (max-width: 700px) { .wc-row { grid-template-columns: minmax(0, 1fr); gap: 6px; } .wc-row::before { top: 22px; } .wc-ticket { grid-template-columns: auto auto minmax(0, 1fr); } }

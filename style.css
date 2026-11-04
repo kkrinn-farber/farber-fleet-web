@@ -320,3 +320,8 @@ fieldset > .note { margin: -2px 0 10px; }
 .copy-msg summary { cursor: pointer; color: var(--accent); font-size: 14px; margin: 4px 0; }
 @media (max-width: 560px) { .copy-row { grid-template-columns: minmax(0, 1fr) auto; } .copy-label { grid-column: 1 / -1; } .copy-row .status { grid-column: 1 / -1; } }
 .panels.one { grid-template-columns: minmax(0, 1fr); }
+/* ticket lists: clearer lines between tickets */
+.work-table th { border-bottom: 2px solid color-mix(in srgb, var(--fg) 35%, transparent); }
+.work-table td { border-bottom: 1px solid color-mix(in srgb, var(--fg) 28%, transparent); padding-top: 12px; padding-bottom: 12px; }
+.work-table tr:last-child td { border-bottom: 0; }
+@media (max-width: 640px) { table.stack.work-table tr { border-bottom: 1px solid color-mix(in srgb, var(--fg) 28%, transparent); } table.stack.work-table td { border: 0; padding: 0 2px; } }

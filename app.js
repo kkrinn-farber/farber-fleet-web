@@ -698,7 +698,7 @@
     const msg = [
       `Farber Fleet setup code for truck ${res.truck_id}:`, '', code, '',
       'Copy the code first (the tracker’s hotspot has no internet). Then:',
-      `1. On your phone, join the Wi-Fi network ${hs.ap_name || 'FarberFleet-…'}${hs.ap_pass ? ` (password: ${hs.ap_pass})` : ' (the password is on the tracker’s sticker)'}.`,
+      `1. On your phone, join the Wi-Fi network ${hs.ap_name || 'FarberFleet-' + res.truck_id}${hs.ap_pass ? ` (password: ${hs.ap_pass})` : ' (the password is on the tracker’s sticker)'}.`,
       '   If the network isn’t there, hold the tracker’s BOOT button for 2 seconds.',
       '2. The setup page opens by itself (or go to http://192.168.4.1).',
       '3. Paste the code under "Setup code from Farber" and press "Use this code".',

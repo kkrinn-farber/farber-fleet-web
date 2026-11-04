@@ -62,6 +62,8 @@ repository: the token file lets anyone pretend to be a truck.
 | `#users` | Users (admins): **Farber team** (types Sales/Service/Engineering, Viewer/Admin, tabs by type) and **Customers** (their trucks, **+ Add a truck** when they buy another, × to remove one) |
 | `#customer-19227` | The customer's truck page: everything current (right now, maintenance, build/delivery) without their address/contact, the Farber team, IP address, firmware or connection details (Location shows Online or Offline instead). Customers with several trucks switch with a dropdown. Admins and Sales open it with **View customer page** |
 | `#work-19227`, `#schedule-19227`, `#done-19227` | Service pages (Service users and admins): **Maintenance history** (every oil change, inspection, repair, warranty job, breakdown and upgrade, with filters and search), schedule maintenance and add maintenance completed (placeholders for now); the buttons are in the truck page's Maintenance section |
+| `#requests` | Service requests from customers (Service users and admins): open first, filters by status, search |
+| `#request-19227` | A customer's Request service page for their truck (placeholder; the form comes later) |
 | `#mytrucks` | Opens the customer's first truck |
 | `#account` | Change your password |
 

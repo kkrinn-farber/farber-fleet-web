@@ -287,3 +287,12 @@ fieldset > .note { margin: -2px 0 10px; }
 .wc-open { justify-self: start; }
 @media (max-width: 560px) { .wc-row { grid-template-columns: 1fr; } .wc-head { padding: 12px 14px; } .wc-list { padding: 2px 14px 4px; } }
 .wc-truck .plate { font-size: 1.02rem; }
+/* warnings: full width, one truck per row */
+.warn-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.wc-head { padding: 12px 20px; background: color-mix(in srgb, var(--panel) 85%, var(--line)); }
+.wc-list { padding: 0 20px; }
+.wc-row { grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr); gap: 8px 24px; padding: 12px 0; }
+.wc-ticket { grid-template-columns: 4.6rem 6.4rem minmax(0, 1fr); gap: 12px; }
+.wc-ticket .pill { justify-self: start; }
+.wc-title { font-size: 14px; }
+@media (max-width: 700px) { .wc-row { grid-template-columns: 1fr; gap: 6px; } .wc-ticket { grid-template-columns: auto auto minmax(0, 1fr); } .wc-head, .wc-list { padding-left: 14px; padding-right: 14px; } }

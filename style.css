@@ -354,6 +354,8 @@ fieldset > .note { margin: -2px 0 10px; }
 .checks { display: grid; gap: 2px; }
 .name-boxes { display: grid; gap: 6px; }
 .name-boxes:empty { display: none; }
+.name-flag { display: grid; gap: 4px; }
+.name-flag .check { font-size: .9em; }
 .with-unit { display: flex; align-items: center; gap: 8px; }
 .with-unit input { flex: 1; min-width: 0; }
 .with-unit[hidden] { display: none; }

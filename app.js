@@ -560,6 +560,10 @@
   const sysWater = (sy) => sysTanks(sy).length > 0 || !!(sy.plumbing && sy.plumbing.jug);
   const listText = (a) => (a && a.length ? a.join(', ') : 'None');
   const BATTERY_TYPES = ['Lithium', 'AGM', 'Flooded lead-acid', 'Other'];
+  // does generator i have its own starting battery? (older trucks without Systems: assume yes)
+  const genOwnBatt = (sy, i) => !sy || !!((sy.generator_batteries || [])[i]);
+  const genListText = (sy) => (sy.generators && sy.generators.length
+    ? sy.generators.map((n, i) => n + (genOwnBatt(sy, i) ? ' (own battery)' : ' (aux battery)')).join(', ') : 'None');
   const batteryText = (b) => (b && b.type ? b.type + (b.ah ? ` · ${num(b.ah)} Ah` : '') : 'None');
   // What a ticket can be about: the truck's own systems, then general areas
   const GENERAL_SYSTEMS = ['Electrical', 'Cabinetry', 'Mechanical', 'Networking', 'Audio/Video', 'Electric step', 'Other'];
@@ -597,7 +601,7 @@
     kv('Water', [...sysTanks(sy).map((k) => k[0].toUpperCase() + k.slice(1) + ' tank'), sy.plumbing && sy.plumbing.jug ? 'Jug system' : null].filter(Boolean).join(', ') || 'None'),
     kv('Leveling jacks', sy.jacks ? 'Yes' : 'No'), kv('Solar', sy.solar ? 'Yes' : 'No'),
     kv('Shore power', sy.shore_amps ? sy.shore_amps + ' A' : 'None'), kv('Off-grid batteries', batteryText(sy.battery)),
-    kv('Slideouts', listText(sy.slideouts)), kv('Generators', listText(sy.generators)), kv('Awnings', listText(sy.awnings))) : null;
+    kv('Slideouts', listText(sy.slideouts)), kv('Generators', genListText(sy)), kv('Awnings', listText(sy.awnings))) : null;
 
   // shared by the staff truck page and the customer page (cust = hide IP and firmware)
   const nowPanelsFor = (t, maint, cust) => {
@@ -655,11 +659,13 @@
         cust ? null : kv('Tracker power', t.tracker_power, null, t.tracker_power === 'Backup battery' ? 'warn' : null)),
       needs('generator') && panel(genNames[0] || 'Generator',
         kv('Generator', t.generator, null, t.generator === 'Error' ? 'bad' : null), kv('Error code', t.gen_error_code),
-        kv('Hour meter', num(t.gen_hours, 1), ' h'), kv('Generator battery', num(t.gen_battery_v, 1), ' V'),
+        kv('Hour meter', num(t.gen_hours, 1), ' h'),
+        genOwnBatt(sy, 0) ? kv('Generator battery', num(t.gen_battery_v, 1), ' V') : kv('Battery', 'Starts from the aux batteries'),
         genMaint.flatMap(dueRows)),
       genNames.length > 1 && panel(genNames[1],
         kv('Generator', t.generator2, null, t.generator2 === 'Error' ? 'bad' : null), kv('Error code', t.gen2_error_code),
-        kv('Hour meter', num(t.gen2_hours, 1), ' h'), kv('Generator battery', num(t.gen2_battery_v, 1), ' V')),
+        kv('Hour meter', num(t.gen2_hours, 1), ' h'),
+        genOwnBatt(sy, 1) ? kv('Generator battery', num(t.gen2_battery_v, 1), ' V') : kv('Battery', 'Starts from the aux batteries')),
       needs('shore') && panel('Shore power', sy && sy.shore_amps ? kv('Service', sy.shore_amps + ' A') : null,
         kv('Shore power', t.shore), kv('Draw', num(t.shore_amps, 1), ' A', sy && sy.shore_amps && t.shore_amps > sy.shore_amps * 0.8 ? 'warn' : null)),
       needs('solar') && panel('Solar', kv('Output', num(t.solar_w), ' W')),
@@ -782,7 +788,7 @@
           tanksH.length && ['Water tanks', tanksH.map((k) => ({ key: k + '_pct', label: k[0].toUpperCase() + k.slice(1) })), '%', 0],
           (!sy || sy.solar) && ['Solar', [{ key: 'solar_w', label: 'Solar' }], ' W', 0],
           (!sy || sy.shore_amps > 0) && ['Shore power draw', [{ key: 'shore_amps', label: 'Shore' }], ' A', 1],
-          gens.length && ['Generator battery', [{ key: 'gen_battery_v', label: gens[0] }, gens[1] ? { key: 'gen2_battery_v', label: gens[1] } : null].filter(Boolean), ' V', 2],
+          gens.some((_, i) => genOwnBatt(sy, i)) && ['Generator battery', [genOwnBatt(sy, 0) ? { key: 'gen_battery_v', label: gens[0] } : null, gens[1] && genOwnBatt(sy, 1) ? { key: 'gen2_battery_v', label: gens[1] } : null].filter(Boolean), ' V', 2],
         ].filter(Boolean);
         // draw at the real size so the text stays readable: work out the column width first
         const boxW = histBox.clientWidth || 360;
@@ -1314,31 +1320,45 @@
     const syncBat = () => { batAhWrap.hidden = !batSel.value; };
     batSel.addEventListener('change', syncBat); syncBat();
     // a count (0..max) and a name box for each unit
-    const named = (label, unit, max, names) => {
+    const named = (label, unit, max, names, flag) => {
+      // flag (optional): a checkbox beside each name, e.g. { label: 'Own battery', values: [true, false], title: '…' }
       const id = 's-' + unit.toLowerCase();
+      const keptFlags = [...((flag && flag.values) || [])];
       const sel = h('select', { id }, Array.from({ length: max + 1 }, (_, i) => h('option', { value: String(i), text: String(i) })));
       sel.value = String((names || []).length);
       const boxes = h('div', { class: 'name-boxes' });
       const kept = [...(names || [])];
+      const nameInputs = () => [...boxes.querySelectorAll('input[type=text]')];
+      const flagInputs = () => [...boxes.querySelectorAll('input[type=checkbox]')];
       const draw = () => {
-        [...boxes.children].forEach((inp, i) => { kept[i] = inp.value; });
+        nameInputs().forEach((inp, i) => { kept[i] = inp.value; });
+        flagInputs().forEach((b, i) => { keptFlags[i] = b.checked; });
         const n = Number(sel.value);
-        boxes.replaceChildren(...Array.from({ length: n }, (_, i) => h('input', { type: 'text', maxlength: '40', 'aria-label': `${unit} ${i + 1} name`,
-          placeholder: `${unit} ${i + 1}`, value: kept[i] || '' })));
+        boxes.replaceChildren(...Array.from({ length: n }, (_, i) => {
+          const name = h('input', { type: 'text', maxlength: '40', 'aria-label': `${unit} ${i + 1} name`, placeholder: `${unit} ${i + 1}`, value: kept[i] || '' });
+          if (!flag) return name;
+          const fid = `${id}-flag-${i}`;
+          const box = h('input', { type: 'checkbox', id: fid });
+          box.checked = !!keptFlags[i];
+          return h('div', { class: 'name-flag' }, name,
+            h('label', { class: 'check', for: fid, title: flag.title || '' }, box, h('span', { text: flag.label })));
+        }));
       };
       sel.addEventListener('change', draw);
       draw();
-      return { get: () => [...boxes.children].map((inp, i) => clean(inp.value) || `${unit} ${i + 1}`),
+      return { get: () => nameInputs().map((inp, i) => clean(inp.value) || `${unit} ${i + 1}`),
+        flags: () => flagInputs().map((b) => b.checked),
         wrap: h('div', { class: 'sys-group' }, h('div', { class: 'sys-count' }, h('label', { class: 'sys-head', for: id, text: label }), sel), boxes) };
     };
     const sysSlides = named('Slideouts', 'Slideout', 6, sys0.slideouts);
-    const sysGens = named('Generators', 'Generator', 2, sys0.generators);
+    const sysGens = named('Generators', 'Generator', 2, sys0.generators,
+      { label: 'Own battery', values: sys0.generator_batteries, title: 'Tick if this generator has its own starting battery. Unticked: it starts from the aux (house) batteries.' });
     const sysAwnings = named('Awnings', 'Awning', 6, sys0.awnings);
     const sysGet = () => ({ engine: sysEngine.box.checked,
       plumbing: Object.fromEntries(Object.entries(sysTank).map(([k, c]) => [k, c.box.checked])),
       jacks: sysJacks.box.checked, solar: sysSolar.box.checked, shore_amps: Number(shoreSel.value),
       battery: batSel.value ? { type: batSel.value, ah: batAh.value ? Math.round(Number(batAh.value)) : null } : null,
-      slideouts: sysSlides.get(), generators: sysGens.get(), awnings: sysAwnings.get() });
+      slideouts: sysSlides.get(), generators: sysGens.get(), generator_batteries: sysGens.flags(), awnings: sysAwnings.get() });
     const systemsSet = h('fieldset', null, h('legend', { text: 'Systems' }),
       h('p', { class: 'note', style: 'margin-bottom:8px', text: 'What this truck has. It decides what the website shows and what the truck’s tracker reads and sends.' }),
       h('div', { class: 'sys-row' },

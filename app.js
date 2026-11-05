@@ -644,7 +644,7 @@
     const tanks = sy ? sysTanks(sy) : ['fresh', 'gray', 'black'];
     const nowPanels = [
       needs('temps') && panel('Temperatures',
-        [1, 2, 3, 4, 5, 6].map((i) => kv(t['temp' + i + '_label'] || 'Temp ' + i, num(t['temp' + i + '_f'], 1), '°F'))),
+        [1, 2, 3, 4, 5, 6, 7].map((i) => kv(t['temp' + i + '_label'] || 'Temp ' + i, num(t['temp' + i + '_f'], 1), '°F'))),
       engine && panel('Truck',
         kv('Engine', t.engine), kv('Speed', num(t.speed_mph), ' mph'), kv('RPM', num(t.rpm)), kv('Mileage', num(t.odometer_mi), ' mi'), kv('Fuel', num(t.fuel_pct), '%'),
         needs('oil') && kv('Oil pressure', num(t.oil_psi), ' psi'), kv('Coolant', num(t.coolant_f), '°F'),
@@ -783,6 +783,7 @@
           ['Speed', [{ key: 'speed_mph', label: 'Speed' }], ' mph', 0],
           ['Temperatures 1–3', [1, 2, 3].map((i) => ({ key: 'temp' + i + '_f', label: t['temp' + i + '_label'] || 'Temp ' + i })), '°F', 1],
           ['Temperatures 4–6', [4, 5, 6].map((i) => ({ key: 'temp' + i + '_f', label: t['temp' + i + '_label'] || 'Temp ' + i })), '°F', 1],
+          [t.temp7_label || 'Outside', [{ key: 'temp7_f', label: t.temp7_label || 'Outside' }], '°F', 1],
           ['Batteries', [{ key: 'chassis_v', label: 'Chassis' }, { key: 'aux_v', label: 'Aux' }], ' V', 2],
           (!sy || sy.engine) && ['Fuel', [{ key: 'fuel_pct', label: 'Fuel' }], '%', 0],
           tanksH.length && ['Water tanks', tanksH.map((k) => ({ key: k + '_pct', label: k[0].toUpperCase() + k.slice(1) })), '%', 0],
@@ -1272,7 +1273,7 @@
     const isNew = r.page === 'new';
     const data = await loadEditData();
     if (token !== renderToken) return;
-    const TEMP_DEFAULTS = ['Chassis battery compartment', 'Aux battery compartment', 'Rack', 'Front room', 'Mid room', 'Rear room'];
+    const TEMP_DEFAULTS = ['Chassis battery compartment', 'Aux battery compartment', 'Rack', 'Front room', 'Mid room', 'Rear room', 'Outside'];
     const t = isNew ? { truck_id: '', country: 'USA', team: {}, ...Object.fromEntries(TEMP_DEFAULTS.map((d, i) => ['temp' + (i + 1) + '_label', d])) }
       : data.trucks.find((x) => x.truck_id === r.id);
     if (!t) { app.replaceChildren(h('a', { class: 'back', href: '#edit', text: '← All trucks' }), h('div', { class: 'empty', text: `There is no truck ${r.id}.` })); return; }
@@ -1406,8 +1407,8 @@
         mk('contact_name', 'Name', { maxlength: '80' }), mk('contact_title', 'Title', { maxlength: '80' }),
         mk('contact_phone', 'Phone', { type: 'tel', maxlength: '40' }), mk('contact_email', 'Email', { type: 'email', maxlength: '120' }))),
       h('fieldset', null, h('legend', { text: 'Temperature sensor names' }),
-        h('p', { class: 'note', style: 'margin-bottom:8px', text: 'What each of the tracker’s six temperature sensors measures on this truck. Leave a box empty to use the standard name.' }),
-        h('div', { class: 'grid' }, [1, 2, 3, 4, 5, 6].map((i) => mk('temp' + i + '_label', 'Sensor ' + i, { maxlength: '40', placeholder: TEMP_DEFAULTS[i - 1] })))),
+        h('p', { class: 'note', style: 'margin-bottom:8px', text: 'What each of the tracker’s seven temperature sensors measures on this truck. Leave a box empty to use the standard name.' }),
+        h('div', { class: 'grid' }, [1, 2, 3, 4, 5, 6, 7].map((i) => mk('temp' + i + '_label', 'Sensor ' + i, { maxlength: '40', placeholder: TEMP_DEFAULTS[i - 1] })))),
       h('fieldset', null, h('legend', { text: 'Farber team' }), h('div', { class: 'grid' }, teamFields)),
       h('div', { class: 'actions sticky' }, save, undo, status));
     start = snapshot();

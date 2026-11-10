@@ -187,7 +187,7 @@
     if ((m = /^ticket-(\d{1,9})$/.exec(raw))) return { page: 'ticket', id: m[1] };
     if ((m = /^trackersettings-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'trackersettings', id: m[1] };
     if ((m = /^warnticket-([A-Za-z0-9_-]{1,32})\/(.{1,120})$/.exec(raw))) return { page: 'warnticket', id: m[1], warn: m[2] };
-    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks', 'requests', 'newticket', 'trackers', 'trackersettings'].includes(raw)) return { page: raw, id: null };
+    if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks', 'requests', 'newticket', 'trackers', 'trackersettings', 'firmware'].includes(raw)) return { page: raw, id: null };
     return { page: 'trucks', id: null };
   };
   const go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
@@ -216,9 +216,9 @@
     if ((r.page === 'requests' && !canSeeTickets()) || ((r.page === 'newticket' || r.page === 'warnticket') && !isServiceView())) r = { page: 'trucks', id: null };
     // Sales doesn't get the offline, shocks or warnings pages
     if (isSalesView() && r.page === 'offline') r = { page: 'trucks', id: null };
-    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page === 'warnticket' ? 'warnings' : r.page === 'trackersettings' ? 'trackers' : r.page);
+    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page === 'warnticket' ? 'warnings' : r.page === 'trackersettings' || r.page === 'firmware' ? 'trackers' : r.page);
     window.scrollTo(0, 0);
-    const adminPages = ['edit', 'new', 'users', 'trackers', 'trackersettings'];
+    const adminPages = ['edit', 'new', 'users', 'trackers', 'trackersettings', 'firmware'];
     if (adminPages.includes(r.page) && !isAdmin()) {
       app.replaceChildren(h('div', { class: 'empty', text: 'Only Farber Fleet admins can open this page.' }));
       return;
@@ -228,7 +228,7 @@
       customer: renderCustomer, mytrucks: renderMyTrucks, service: renderServicePage, requests: renderRequests, request: renderRequestForm,
       ticket: renderTicket, newticket: (rr, tk) => renderNewTicket(rr, tk, { heading: 'New ticket', status: 'New' }),
       warnticket: (rr, tk) => renderNewTicket(rr, tk, warningPreset(rr.warn)),
-      trackers: renderTrackers, trackersettings: renderTrackerSettings };
+      trackers: renderTrackers, trackersettings: renderTrackerSettings, firmware: renderFirmware };
     app.replaceChildren(h('p', { class: 'loading', text: 'Loading…' }));
     try {
       await pages[r.page](r, token);
@@ -1058,12 +1058,133 @@
     app.replaceChildren(
       h('h1', { class: 'title', text: 'Trackers' }),
       h('p', { class: 'lede', text: 'Every tracker board that has checked in. All boards run the same firmware: a new one joins FarberGuest (or its setup hotspot, or cellular), shows up under “Waiting for a truck”, and sets itself up within a minute of being assigned.' }),
-      h('div', { class: 'toolbar' }, h('a', { class: 'btn ghost', href: '#trackersettings', text: 'Fleet tracker settings' })),
+      h('div', { class: 'toolbar' }, h('a', { class: 'btn ghost', href: '#trackersettings', text: 'Fleet tracker settings' }),
+        h('a', { class: 'btn ghost', href: '#firmware', text: 'Firmware updates' })),
       status,
       h('div', { class: 'section-head' }, h('h2', { text: `Waiting for a truck (${waiting.length})` })),
       table(waiting, 'No new trackers. Power one up near FarberGuest and it appears here.'),
       h('div', { class: 'section-head' }, h('h2', { text: `On trucks (${assigned.length})` })),
       table(assigned, 'No trackers are on trucks yet. Trackers set up with the older firmware appear here after they update.'));
+  };
+
+
+  // ---------- firmware updates (admin)
+  const BOARDS = { 'waveshare-s3-sim7670g': 'Waveshare ESP32-S3-SIM7670G-4G', 'lilygo-t-sim7670g-s3': 'LILYGO T-SIM7670G-S3' };
+  const FW_CHUNK = 16384;
+  const verCmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
+  const hexOf = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+  const b64Of = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
+
+  const renderFirmware = async (r, token) => {
+    const data = await rpc('web_firmware_list');
+    if (token !== renderToken) return;
+    const status = h('p', { class: 'status', 'aria-live': 'polite' });
+    const say = (cls, text) => { status.className = 'status ' + cls; status.textContent = text; };
+
+    // upload form
+    const boardSel = h('select', { id: 'fw-board' }, Object.entries(BOARDS).map(([v, t]) => h('option', { value: v, text: t })));
+    const verIn = h('input', { id: 'fw-ver', type: 'text', inputmode: 'decimal', placeholder: 'e.g. 0.9.2', autocomplete: 'off' });
+    const notesIn = h('input', { id: 'fw-notes', type: 'text', maxlength: 500, placeholder: 'What changed (optional)' });
+    const fileIn = h('input', { id: 'fw-file', type: 'file', accept: '.bin' });
+    const upBtn = h('button', { class: 'btn', type: 'submit', text: 'Upload' });
+    const progress = h('p', { class: 'note', 'aria-live': 'polite' });
+    const field = (id, label, input, wide) => h('div', { class: 'field' + (wide ? ' wide' : '') }, h('label', { for: id, text: label }), input);
+    const form = h('form', { class: 'card form' },
+      h('div', { class: 'grid' }, field('fw-board', 'Board', boardSel), field('fw-ver', 'Version number (must match the firmware)', verIn),
+        field('fw-file', 'Firmware file (.bin)', fileIn), field('fw-notes', 'Notes', notesIn, true)),
+      h('p', { class: 'note', text: 'In the Arduino IDE: Sketch → Export Compiled Binary, then pick FarberFleet.ino.bin from the sketch’s build folder (not the .bootloader or .partitions file). Give every build a new version number.' }),
+      h('div', { class: 'toolbar' }, upBtn), progress);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const board = boardSel.value, ver = verIn.value.trim(), file = fileIn.files[0];
+      if (!/^\d+\.\d+\.\d+$/.test(ver)) return say('bad', 'Type the version number, like 0.9.2. It must be the same as FW_VERSION in the firmware.');
+      if (!file) return say('bad', 'Pick the .bin file.');
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (bytes[0] !== 0xE9 || bytes.length < 100000) return say('bad', 'That isn’t a tracker firmware file. Use FarberFleet.ino.bin (about 1 MB).');
+      if (bytes.length > 3145728) return say('bad', 'That file is too big for the tracker (over 3 MB).');
+      upBtn.disabled = true; say('', '');
+      try {
+        const sha = hexOf(await crypto.subtle.digest('SHA-256', bytes));
+        await rpc('web_firmware_begin', { p_board: board, p_version: ver, p_size: bytes.length, p_sha256: sha, p_notes: notesIn.value.trim() });
+        const n = Math.ceil(bytes.length / FW_CHUNK);
+        for (let i = 0; i < n; i++) {
+          if (token !== renderToken) return;
+          progress.textContent = `Uploading… ${Math.round((i / n) * 100)}%`;
+          await rpc('web_firmware_put', { p_board: board, p_version: ver, p_idx: i, p_b64: b64Of(bytes.subarray(i * FW_CHUNK, (i + 1) * FW_CHUNK)) });
+        }
+        progress.textContent = 'Checking the file…';
+        await rpc('web_firmware_finish', { p_board: board, p_version: ver });
+        await route();
+        showNotice(`Firmware ${ver} uploaded.`, 'Nothing changes on the trackers until you make it the fleet version, or pick it for a truck below.', 'good');
+      } catch (err) { say('bad', friendly(err)); progress.textContent = ''; upBtn.disabled = false; }
+    });
+
+    // releases per board
+    const releases = data.releases.filter((x) => x.complete);
+    const relTable = (board) => {
+      const rows = releases.filter((x) => x.board === board);
+      if (!rows.length) return h('div', { class: 'empty', text: 'No firmware uploaded for this board yet.' });
+      const fleet = rows.find((x) => x.is_fleet);
+      return h('div', { class: 'card scroll' }, h('table', { class: 'stack users' },
+        h('thead', null, h('tr', null, h('th', { text: 'Version' }), h('th', { text: 'Uploaded' }), h('th', { text: 'On trackers' }), h('th', { text: '' }))),
+        h('tbody', null, rows.map((x) => h('tr', null,
+          h('td', { class: 'first', 'data-label': 'Version' }, h('div', null, h('strong', { text: x.version }), ' ', x.is_fleet ? h('span', { class: 'pill ok', text: 'Fleet version' }) : null),
+            x.notes ? h('div', { class: 'note', text: x.notes }) : null),
+          h('td', { 'data-label': 'Uploaded', text: fmtTime(x.uploaded_at) + (x.uploaded_by ? ' · ' + x.uploaded_by : '') + ' · ' + num(x.size / 1024) + ' KB' }),
+          h('td', { 'data-label': 'On trackers', text: String(x.trackers) }),
+          h('td', { 'data-label': 'Actions' }, h('div', { class: 'actions' },
+            x.is_fleet
+              ? twice('Stop fleet updates', 'Trackers stop being offered updates for this board (trucks with their own version still get theirs).', say,
+                  async () => { await rpc('web_firmware_set_fleet', { p_board: board, p_version: null }); route(); })
+              : twice('Make fleet version', `Every ${BOARDS[board]} tracker installs ${x.version} the next time it’s parked on Wi-Fi and outside power` +
+                  (fleet && verCmp(x.version, fleet.version) < 0 ? ` — this is OLDER than the current fleet version ${fleet.version}.` : '.'), say,
+                  async () => { await rpc('web_firmware_set_fleet', { p_board: board, p_version: x.version }); route(); }, 'solid'),
+            x.is_fleet ? null : twice('Delete', `Removes firmware ${x.version}. Trackers already running it keep it.`, say,
+              async () => { await rpc('web_firmware_delete', { p_board: board, p_version: x.version }); route(); }, 'danger'))))))));
+    };
+
+    // trackers and per-truck targets
+    const verOpts = (board) => releases.filter((x) => !board || x.board === board).map((x) => x.version);
+    const targetBox = (k) => {
+      const cur = k.fw_target || '';
+      const sel = h('select', { 'aria-label': 'Firmware for truck ' + k.truck_id },
+        h('option', { value: '', text: 'Follow the fleet version' }), h('option', { value: 'hold', text: 'Hold: never update' }),
+        [...new Set(verOpts(k.board))].map((v) => h('option', { value: v, text: 'Version ' + v })));
+      if (cur && cur !== 'hold' && !verOpts(k.board).includes(cur)) sel.append(h('option', { value: cur, text: 'Version ' + cur + ' (not uploaded)' }));
+      sel.value = cur;
+      sel.addEventListener('change', async () => {
+        sel.disabled = true;
+        try { await rpc('web_firmware_set_truck', { p_truck: k.truck_id, p_target: sel.value }); say('good', `Truck ${k.truck_id}: saved.`); }
+        catch (err) { say('bad', friendly(err)); sel.value = cur; }
+        sel.disabled = false;
+      });
+      return sel;
+    };
+    const fleetVer = (board) => (releases.find((x) => x.board === board && x.is_fleet) || {}).version;
+    const trRows = data.trackers.map((k) => {
+      const want = k.fw_target === 'hold' ? null : k.fw_target || fleetVer(k.board);
+      const state = !k.board ? 'Firmware too old for updates: flash 0.9.1 or later over USB once'
+        : want && want !== k.fw ? `Will update to ${want} when parked on Wi-Fi and outside power` : 'Up to date';
+      return h('tr', null,
+        h('td', { class: 'first', 'data-label': 'Tracker' }, h('div', { class: 'mono', text: k.device_id }),
+          h('div', { class: 'note', text: (BOARDS[k.board] || 'Board unknown') + (k.last_seen ? ' · checked in ' + ago(minsSince(k.last_seen)) : '') })),
+        h('td', { 'data-label': 'Truck' }, k.truck_id ? h('a', { href: '#truck-' + encodeURIComponent(k.truck_id), text: k.truck_id + (k.truck_name ? ' · ' + k.truck_name : '') }) : h('span', { class: 'note', text: 'No truck' })),
+        h('td', { 'data-label': 'Firmware' }, h('div', null, h('strong', { text: k.fw || '—' })), h('div', { class: 'note ' + (state.startsWith('Will') ? 'warn' : ''), text: state }),
+          k.fw_update_result ? h('div', { class: 'note', text: 'Last update: ' + k.fw_update_result + ' (' + fmtTime(k.fw_update_at) + ')' }) : null),
+        h('td', { 'data-label': 'Update setting' }, k.truck_id ? targetBox(k) : h('span', { class: 'note', text: 'Assign it to a truck first' })));
+    });
+
+    app.replaceChildren(
+      h('a', { class: 'back', href: '#trackers', text: '← Trackers' }),
+      h('h1', { class: 'title', text: 'Firmware updates' }),
+      h('p', { class: 'lede', text: 'Upload a new tracker firmware here and make it the fleet version. Each tracker installs it by itself the next time it’s parked, on Wi-Fi and on outside power. If the new firmware can’t reach the server within 20 minutes, or keeps restarting, the tracker goes back to its old firmware and reports it below.' }),
+      status,
+      h('div', { class: 'section-head' }, h('h2', { text: 'Upload firmware' })), form,
+      ...Object.keys(BOARDS).flatMap((b) => [h('div', { class: 'section-head' }, h('h2', { text: BOARDS[b] })), relTable(b)]),
+      h('div', { class: 'section-head' }, h('h2', { text: `Trackers (${data.trackers.length})` })),
+      data.trackers.length ? h('div', { class: 'card scroll' }, h('table', { class: 'stack users' },
+        h('thead', null, h('tr', null, h('th', { text: 'Tracker' }), h('th', { text: 'Truck' }), h('th', { text: 'Firmware' }), h('th', { text: 'Update setting' }))),
+        h('tbody', null, trRows))) : h('div', { class: 'empty', text: 'No trackers yet.' }));
   };
 
   // Settings shown in friendly units; stored as the tracker uses them.

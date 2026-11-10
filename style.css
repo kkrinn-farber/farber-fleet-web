@@ -366,3 +366,10 @@ fieldset > .note { margin: -2px 0 10px; }
 .link-btn { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: .85rem; text-decoration: underline; }
 .setup-code { margin-bottom: 14px; }
 .setup-code .copy-val { overflow-wrap: anywhere; word-break: break-all; }
+
+/* tracker battery charge meter */
+.meter { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 2px 0 6px; }
+.meter > span { display: block; height: 100%; border-radius: inherit; background: var(--ok); }
+.meter.warn > span { background: var(--warn); }
+.meter.bad > span { background: var(--bad); }
+.kv.meter-row { border-bottom: 0; padding-bottom: 2px; }

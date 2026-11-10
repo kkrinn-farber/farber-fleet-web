@@ -501,6 +501,30 @@
   // ---------- one truck
   const kv = (label, value, unit, cls) => h('div', { class: 'kv' }, h('span', { text: label, title: label }),
     h('b', { class: cls || null }, present(value) ? String(value) : '—', present(value) && unit ? h('span', { class: 'unit', text: unit }) : null));
+  // Tracker backup battery: charge meter, time left, low power mode (fuel-gauge boards send %)
+  const hoursText = (h) => (h < 1 ? `about ${Math.max(5, Math.round(h * 60 / 5) * 5)} min` : h < 48 ? `about ${h < 10 ? h.toFixed(1) : Math.round(h)} h` : `about ${Math.round(h / 24)} days`);
+  const trackerBatteryRows = (t, cust) => {
+    const pct = present(t.board_pct) ? Math.max(0, Math.min(100, Number(t.board_pct))) : null;
+    const onBatt = t.tracker_power === 'Backup battery', rate = present(t.board_rate) ? Number(t.board_rate) : null;
+    const level = pct === null ? null : pct <= 15 ? 'bad' : pct <= 35 ? 'warn' : 'ok';
+    const rows = [];
+    if (pct !== null) {
+      rows.push(h('div', { class: 'kv meter-row' }, h('span', { text: 'Tracker battery' }),
+        h('b', { class: level === 'ok' ? null : level }, `${pct}%`, present(t.board_v) ? h('span', { class: 'unit', text: ` · ${num(t.board_v, 2)} V` }) : null)));
+      rows.push(h('div', { class: 'meter ' + level, role: 'meter', 'aria-label': 'Tracker battery charge', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) },
+        h('span', { style: `width:${pct}%` })));
+    } else {
+      rows.push(kv('Tracker battery', num(t.board_v, 2), ' V', tone('board_v', t.board_v)));
+    }
+    if (!cust) rows.push(kv('Tracker power', t.tracker_power, null, onBatt ? 'warn' : null));
+    if (pct !== null && rate !== null) {
+      if (onBatt && rate < -0.3) rows.push(kv('Time to empty', hoursText(pct / -rate), null, pct / -rate < 6 ? 'warn' : null));
+      else if (!onBatt && rate > 0.3 && pct < 99) rows.push(kv('Full in', hoursText((100 - pct) / rate)));
+      else if (onBatt) rows.push(kv('Time to empty', 'Working it out…'));
+    }
+    if (!cust && present(t.low_power)) rows.push(kv('Low power mode', t.low_power ? 'On' : 'Off', null, t.low_power ? 'warn' : null));
+    return rows;
+  };
   const panel = (title, ...rows) => h('div', { class: 'card panel' }, h('h3', { text: title }), ...rows);
   const tone = (field, v) => {
     if (!present(v)) return null;
@@ -657,8 +681,7 @@
         needs('aux') && kv(sy ? 'Off-grid' : 'Aux', num(t.aux_v, 1), ' V', tone('aux_v', t.aux_v)),
         needs('aux') && kv(sy ? 'Off-grid current' : 'Aux current', num(t.aux_a, 1), ' A'),
         needs('aux') && sy && sy.battery && sy.battery.ah ? kv('Off-grid bank', batteryText(sy.battery)) : null,
-        kv('Tracker battery', num(t.board_v, 2), ' V', tone('board_v', t.board_v)),
-        cust ? null : kv('Tracker power', t.tracker_power, null, t.tracker_power === 'Backup battery' ? 'warn' : null)),
+        ...trackerBatteryRows(t, cust)),
       needs('generator') && panel(genNames[0] || 'Generator',
         kv('Generator', t.generator, null, t.generator === 'Error' ? 'bad' : null), kv('Error code', t.gen_error_code),
         kv('Hour meter', num(t.gen_hours, 1), ' h'),

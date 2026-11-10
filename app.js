@@ -525,6 +525,16 @@
     if (!cust && present(t.low_power)) rows.push(kv('Low power mode', t.low_power ? 'On' : 'Off', null, t.low_power ? 'warn' : null));
     return rows;
   };
+  // Wi-Fi signal: dBm -> a meter and a word (-50 or better is full, -90 is empty)
+  const wifiSignalRows = (rssi) => {
+    if (!present(rssi)) return [];
+    const r = Number(rssi), pct = Math.max(0, Math.min(100, Math.round(((r + 90) / 40) * 100)));
+    const [word, level] = r >= -55 ? ['Excellent', 'ok'] : r >= -67 ? ['Good', 'ok'] : r >= -75 ? ['Fair', 'warn'] : ['Weak', 'bad'];
+    return [h('div', { class: 'kv meter-row' }, h('span', { text: 'Wi-Fi signal' }),
+        h('b', { class: level === 'ok' ? null : level }, word, h('span', { class: 'unit', text: ` · ${r} dBm` }))),
+      h('div', { class: 'meter ' + level, role: 'meter', 'aria-label': 'Wi-Fi signal strength', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) },
+        h('span', { style: `width:${pct}%` }))];
+  };
   const panel = (title, ...rows) => h('div', { class: 'card panel' }, h('h3', { text: title }), ...rows);
   const tone = (field, v) => {
     if (!present(v)) return null;
@@ -706,7 +716,7 @@
           ? h('a', { href: mapUrl(t.lat, t.lon), target: '_blank', rel: 'noopener', text: [t.near_city, t.near_state].filter(Boolean).join(', ') || 'Map' })
           : h('b', { text: '—' })),
         cust ? kv('Farber Fleet Connection', t.status, null, t.status === 'Online' ? 'ok' : t.status === 'Asleep' ? 'warn' : 'bad') : kv('Connection', t.network),
-        !cust && t.network === 'Wi-Fi' ? kv('Wi-Fi network', t.wifi_ssid) : null,
+        ...(!cust && t.network === 'Wi-Fi' ? [kv('Wi-Fi network', t.wifi_ssid), ...wifiSignalRows(t.wifi_rssi)] : []),
         !cust && t.network === 'Cellular' ? kv('Last on Wi-Fi', t.last_wifi_at ? ago(Math.round((Date.now() - new Date(t.last_wifi_at).getTime()) / 60000)) : 'Never') : null,
         cust ? null : kv('IP address', t.ip_addr),
         cust ? null : kv('Firmware', t.fw),

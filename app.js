@@ -186,6 +186,7 @@
     if ((m = /^request-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'request', id: m[1] };
     if ((m = /^ticket-(\d{1,9})$/.exec(raw))) return { page: 'ticket', id: m[1] };
     if ((m = /^trackersettings-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'trackersettings', id: m[1] };
+    if ((m = /^log-([A-Za-z0-9_-]{1,32})$/.exec(raw))) return { page: 'log', id: m[1] };
     if ((m = /^warnticket-([A-Za-z0-9_-]{1,32})\/(.{1,120})$/.exec(raw))) return { page: 'warnticket', id: m[1], warn: m[2] };
     if (['trucks', 'offline', 'shocks', 'warnings', 'edit', 'new', 'users', 'account', 'mytrucks', 'requests', 'newticket', 'trackers', 'trackersettings', 'firmware'].includes(raw)) return { page: raw, id: null };
     return { page: 'trucks', id: null };
@@ -216,9 +217,9 @@
     if ((r.page === 'requests' && !canSeeTickets()) || ((r.page === 'newticket' || r.page === 'warnticket') && !isServiceView())) r = { page: 'trucks', id: null };
     // Sales doesn't get the offline, shocks or warnings pages
     if (isSalesView() && r.page === 'offline') r = { page: 'trucks', id: null };
-    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page === 'warnticket' ? 'warnings' : r.page === 'trackersettings' || r.page === 'firmware' ? 'trackers' : r.page);
+    markMenu(r.page === 'truck' || r.page === 'service' ? 'trucks' : r.page === 'request' || (r.page === 'ticket' && isCustomer()) ? (isCustomer() ? 'mytrucks' : 'trucks') : r.page === 'ticket' || r.page === 'newticket' ? 'requests' : r.page === 'warnticket' ? 'warnings' : r.page === 'trackersettings' || r.page === 'firmware' ? 'trackers' : r.page === 'log' ? 'trucks' : r.page);
     window.scrollTo(0, 0);
-    const adminPages = ['edit', 'new', 'users', 'trackers', 'trackersettings', 'firmware'];
+    const adminPages = ['edit', 'new', 'users', 'trackers', 'trackersettings', 'firmware', 'log'];
     if (adminPages.includes(r.page) && !isAdmin()) {
       app.replaceChildren(h('div', { class: 'empty', text: 'Only Farber Fleet admins can open this page.' }));
       return;
@@ -228,7 +229,7 @@
       customer: renderCustomer, mytrucks: renderMyTrucks, service: renderServicePage, requests: renderRequests, request: renderRequestForm,
       ticket: renderTicket, newticket: (rr, tk) => renderNewTicket(rr, tk, { heading: 'New ticket', status: 'New' }),
       warnticket: (rr, tk) => renderNewTicket(rr, tk, warningPreset(rr.warn)),
-      trackers: renderTrackers, trackersettings: renderTrackerSettings, firmware: renderFirmware };
+      trackers: renderTrackers, trackersettings: renderTrackerSettings, firmware: renderFirmware, log: renderLog };
     app.replaceChildren(h('p', { class: 'loading', text: 'Loading…' }));
     try {
       await pages[r.page](r, token);
@@ -888,7 +889,8 @@
         t.status === 'No tracker' || t.status === 'Setting up' ? null : h('span', { text: 'Last report ' + ago(t.minutes_since_seen) }),
         isAdmin() ? h('a', { href: '#edit-' + encodeURIComponent(t.truck_id), text: 'Edit truck' }) : null,
         isAdmin() ? customerBtn : null,
-        isAdmin() ? h('a', { class: 'btn ghost small', href: '#trackersettings-' + encodeURIComponent(t.truck_id), text: 'Tracker settings' }) : null),
+        isAdmin() ? h('a', { class: 'btn ghost small', href: '#trackersettings-' + encodeURIComponent(t.truck_id), text: 'Tracker settings' }) : null,
+        isAdmin() ? h('a', { class: 'btn ghost small', href: '#log-' + encodeURIComponent(t.truck_id), text: 'Serial monitor' }) : null),
       trackerNote,
       h('div', { class: 'section-head' }, h('h2', { text: 'Truck details' })),
       setupBox,
@@ -1225,6 +1227,58 @@
       data.trackers.length ? h('div', { class: 'card scroll' }, h('table', { class: 'stack users' },
         h('thead', null, h('tr', null, h('th', { text: 'Tracker' }), h('th', { text: 'Truck' }), h('th', { text: 'Firmware' }), h('th', { text: 'Update setting' }))),
         h('tbody', null, trRows))) : h('div', { class: 'empty', text: 'No trackers yet.' }));
+  };
+
+  // ---------- tracker Serial monitor (admin): the tracker's log, sent with its uploads while this page is open
+  const renderLog = async (r, token) => {
+    const id = r.id;
+    const OPEN_MIN = 15;
+    let after = 0, keepOpen = true, lastBoot = null;
+    const box = h('pre', { class: 'code serial', 'aria-live': 'off' });
+    const state = h('p', { class: 'note' });
+    const follow = h('input', { type: 'checkbox', id: 'log-follow', checked: true });
+    const add = (text) => {
+      const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+      box.append(document.createTextNode(text));
+      while (box.textContent.length > 200000) box.removeChild(box.firstChild);
+      if (follow.checked || atEnd) box.scrollTop = box.scrollHeight;
+    };
+    const open = async (min) => { await rpc('web_tracker_log_open', { p_truck: id, p_minutes: min }); };
+    const stopBtn = h('button', { class: 'btn ghost small', type: 'button', text: 'Stop' });
+    const startBtn = h('button', { class: 'btn small', type: 'button', text: 'Start', hidden: true });
+    stopBtn.onclick = async () => { keepOpen = false; await open(0); stopBtn.hidden = true; startBtn.hidden = false; };
+    startBtn.onclick = async () => { keepOpen = true; await open(OPEN_MIN); startBtn.hidden = true; stopBtn.hidden = false; };
+    const clearBtn = h('button', { class: 'btn ghost small', type: 'button', text: 'Clear screen', onclick: () => { box.textContent = ''; } });
+    app.replaceChildren(
+      h('a', { class: 'back', href: '#truck-' + encodeURIComponent(id), text: '← Truck ' + id }),
+      h('h1', { class: 'title', text: 'Serial monitor · ' + id }),
+      h('p', { class: 'lede', text: 'The tracker’s own log, as you’d see it on the USB Serial Monitor. While this page is open the tracker sends its log with each upload (every 15 seconds on Wi-Fi), so lines arrive in small batches. Needs firmware 0.9.3 or later. It stops by itself 15 minutes after you leave this page.' }),
+      h('div', { class: 'toolbar' }, stopBtn, startBtn, clearBtn, h('label', { class: 'check', for: 'log-follow' }, follow, h('span', { text: 'Follow new lines' }))),
+      state, box);
+    try { await open(OPEN_MIN); } catch (err) { state.textContent = friendly(err); return; }
+    let lastExtend = Date.now();
+    const tick = async () => {
+      if (token !== renderToken) { return; }     // left the page: the server closes it when log_until passes
+      try {
+        const d = await rpc('web_tracker_log', { p_truck: id, p_after: after });
+        if (token !== renderToken) return;
+        for (const row of d.rows) {
+          if (lastBoot !== null && row.boot_id !== lastBoot) add('\n──── tracker restarted ────\n');
+          lastBoot = row.boot_id;
+          add(row.text);
+          after = row.id;
+        }
+        const seen = d.last_seen ? ago(minsSince(d.last_seen)) : 'never';
+        const fwOld = d.fw && verCmp(d.fw, '0.9.3') < 0;
+        state.className = 'note' + (fwOld ? ' warn' : '');
+        state.textContent = (keepOpen ? 'Listening' : 'Stopped') + ` · tracker last checked in ${seen}` + (d.fw ? ` · firmware ${d.fw}` : '') +
+          (fwOld ? ' — this firmware can’t send its log yet; install 0.9.3 or later.' : '') +
+          (!after && keepOpen && !fwOld ? ' · waiting for the first lines (up to a minute)…' : '');
+        if (keepOpen && Date.now() - lastExtend > 5 * 60000) { lastExtend = Date.now(); open(OPEN_MIN).catch(() => {}); }
+      } catch (err) { state.className = 'note bad'; state.textContent = friendly(err); }
+      setTimeout(tick, 4000);
+    };
+    tick();
   };
 
   // Settings shown in friendly units; stored as the tracker uses them.

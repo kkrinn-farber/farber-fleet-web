@@ -373,3 +373,6 @@ fieldset > .note { margin: -2px 0 10px; }
 .meter.warn > span { background: var(--warn); }
 .meter.bad > span { background: var(--bad); }
 .kv.meter-row { border-bottom: 0; padding-bottom: 2px; }
+
+/* tracker Serial monitor */
+pre.serial { height: 65vh; overflow: auto; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.45; }

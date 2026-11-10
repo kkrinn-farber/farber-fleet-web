@@ -902,9 +902,9 @@
       reqs ? h('div', { class: 'section-head' }, h('h2', { text: 'Service tickets' }), h('a', { class: 'note', href: '#requests', text: 'All service tickets →' })) : null,
       reqs ? truckRequestsCard(reqs, false) : null,
       h('div', { class: 'section-head' }, h('h2', { text: 'Events' }), h('p', { class: 'note', text: 'Last 30 days, with when and where each warning started' }),
-        isServiceView() && events.some((e) => e.kind === 'warning' && /^w-.+-\d+$/.test(e.id)) ? (() => {
+        isServiceView() && events.some((e) => (e.kind === 'warning' && /^w-.+-\d+$/.test(e.id)) || /^(Boot|Resume)\b/.test(e.event)) ? (() => {
           const msg = h('span', { class: 'note' });
-          const b = twice('Clear past warnings', 'Hides the warnings listed below. Warnings that are still true, and any new ones, keep showing.',
+          const b = twice('Clear warnings and restarts', 'Hides the past warnings and tracker restarts (Boot) listed below. Shocks, warnings that are still true, and anything new keep showing.',
             (cls, text) => { msg.className = 'note ' + cls; msg.textContent = text; },
             async () => { await rpc('web_truck_clear_warnings', { p_truck: t.truck_id }); route(); });
           return h('span', { class: 'actions' }, b, msg);
